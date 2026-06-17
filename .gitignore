@@ -1,0 +1,58 @@
+node_modules/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+
+# ── Secrets Firebase (NE JAMAIS COMMITER) ────────────────────
+firebase-applet-config.json
+google-services.json
+GoogleService-Info.plist
+
+# ── Clés & certificats ───────────────────────────────────────
+*.jks
+*.keystore
+*.p12
+
+# ── FlamingoAndroid ──────────────────────────────────────────
+FlamingoAndroid/.gradle/
+FlamingoAndroid/build/
+FlamingoAndroid/app/build/
+FlamingoAndroid/**/.gradle/
+FlamingoAndroid/**/build/
+FlamingoAndroid/.idea/
+FlamingoAndroid/local.properties
+FlamingoAndroid/app_log.txt
+*.apk
+*.aab
+
+# ── FlamingoiOS ──────────────────────────────────────────────
+FlamingoiOS/Pods/
+FlamingoiOS/Podfile.lock
+FlamingoiOS/build/
+FlamingoiOS/DerivedData/
+FlamingoiOS/**/*.xcuserstate
+FlamingoiOS/**/*.xcuserdata/
+FlamingoiOS/.swiftpm/
+
+# ── FlamingoWeb ──────────────────────────────────────────────
+FlamingoWeb/node_modules/
+FlamingoWeb/dist/
+FlamingoWeb/.vite/
+FlamingoWeb/devserver.*.log
+
+# ── Cloud Functions ──────────────────────────────────────────
+functions/node_modules/
+functions/.env
+
+# ── IDE & OS ─────────────────────────────────────────────────
+.vscode/
+.idea/
+*.iml
+*.swp
+*.swo
+*~
+Thumbs.db
+.tmp/
+temp/

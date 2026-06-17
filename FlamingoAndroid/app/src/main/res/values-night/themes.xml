@@ -1,0 +1,39 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Dark theme — Flamingo Night -->
+    <style name="Base.Theme.FlamingoAndroid" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Primary: Flamingo Rose (identique en dark) -->
+        <item name="colorPrimary">#FF7A85</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorPrimaryContainer">#5C0020</item>
+        <item name="colorOnPrimaryContainer">#FFE4E7</item>
+
+        <!-- Secondary: Bleu Marine éclairci -->
+        <item name="colorSecondary">#3A6099</item>
+        <item name="colorOnSecondary">#FFFFFF</item>
+        <item name="colorSecondaryContainer">#1A365D</item>
+        <item name="colorOnSecondaryContainer">#D1E0F5</item>
+
+        <!-- Tertiary: Or Soleil -->
+        <item name="colorTertiary">#FCD34D</item>
+        <item name="colorOnTertiary">#1A1000</item>
+        <item name="colorTertiaryContainer">#3D2E00</item>
+        <item name="colorOnTertiaryContainer">#FFF3C0</item>
+
+        <!-- Surfaces sombres -->
+        <item name="android:colorBackground">@color/background_dark</item>
+        <item name="colorSurface">@color/surface_dark</item>
+        <item name="colorOnSurface">#F7F7F6</item>
+        <item name="colorSurfaceVariant">@color/surfaceVariant_dark</item>
+        <item name="colorOnSurfaceVariant">#8FA3B5</item>
+        <item name="colorOutline">#2E4A6A</item>
+        <item name="colorOutlineVariant">#1E3A54</item>
+
+        <!-- Status bar sombre -->
+        <item name="android:statusBarColor">@color/background_dark</item>
+        <item name="android:windowLightStatusBar" tools:targetApi="m">false</item>
+        <item name="android:navigationBarColor">@color/background_dark</item>
+        <item name="android:windowBackground">@color/background_dark</item>
+
+        <item name="android:forceDarkAllowed">false</item>
+    </style>
+</resources>

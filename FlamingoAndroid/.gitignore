@@ -1,0 +1,26 @@
+# Gradle
+.gradle/
+.gradle-user/
+build/
+**/build/
+local.properties
+
+# Android
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.DS_Store
+
+# Keystore
+*.jks
+*.keystore
+
+# Google Services
+google-services.json

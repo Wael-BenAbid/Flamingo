@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <group android:id="@+id/group_main">
+        <item
+            android:id="@+id/nav_dashboard"
+            android:icon="@android:drawable/ic_menu_view"
+            android:title="Dashboard" />
+        <item
+            android:id="@+id/nav_reservations"
+            android:icon="@android:drawable/ic_menu_agenda"
+            android:title="Réservations" />
+        <item
+            android:id="@+id/nav_daily_check"
+            android:icon="@android:drawable/ic_menu_today"
+            android:title="Arrivées" />
+        <item
+            android:id="@+id/nav_workers"
+            android:icon="@android:drawable/ic_menu_manage"
+            android:title="Travailleurs" />
+        <item
+            android:id="@+id/nav_inventory"
+            android:icon="@android:drawable/ic_menu_gallery"
+            android:title="Gestion Stock" />
+        <item
+            android:id="@+id/nav_kitchen_orders"
+            android:icon="@android:drawable/ic_menu_agenda"
+            android:title="Commandes cuisine" />
+        <item
+            android:id="@+id/nav_menu_orders"
+            android:icon="@android:drawable/ic_menu_edit"
+            android:title="Prise de commande" />
+        <item
+            android:id="@+id/nav_payment"
+            android:icon="@android:drawable/ic_menu_send"
+            android:title="Paiement" />
+        <item
+            android:id="@+id/nav_settings"
+            android:icon="@android:drawable/ic_menu_preferences"
+            android:title="Menus &amp; Tables" />
+        <item
+            android:id="@+id/nav_reports"
+            android:icon="@android:drawable/ic_menu_info_details"
+            android:title="Bilans Journaliers" />
+    </group>
+    <item
+        android:id="@+id/nav_logout"
+        android:icon="@android:drawable/ic_menu_close_clear_cancel"
+        android:title="Déconnexion" />
+</menu>

@@ -1,0 +1,189 @@
+{
+  "entities": {
+    "Reservation": {
+      "title": "Reservation",
+      "description": "Customer beach or restaurant reservation",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "firstName": { "type": "string" },
+        "lastName": { "type": "string" },
+        "phone": { "type": "string" },
+        "adults": { "type": "number" },
+        "children": { "type": "number" },
+        "date": { "type": "string", "format": "date" },
+        "time": { "type": "string" },
+        "notes": { "type": "string" },
+        "positionType": { "type": "string" },
+        "status": { "type": "string", "enum": ["confirmed", "pending", "cancelled", "absent"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["firstName", "lastName", "phone", "date", "positionType", "status"]
+    },
+    "Worker": {
+      "title": "Worker",
+      "description": "Beach club employee with daily wage tracking",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "fullName": { "type": "string" },
+        "category": { "type": "string", "enum": ["Chef serveur", "Serveur", "Cuisine", "Sécurité", "Nettoyage", "Responsable"] },
+        "dailyWage": { "type": "number", "description": "Salary per day worked" },
+        "totalAdvances": { "type": "number" },
+        "totalPenalties": { "type": "number" },
+        "currentPresence": { "type": "string", "enum": ["present", "absent", "half", "off"] },
+        "attendanceCount": { "type": "number" },
+        "totalEarned": { "type": "number" },
+        "totalPaid": { "type": "number" },
+        "lastPresenceDate": { "type": "string", "format": "date" },
+        "startDate": { "type": "string", "format": "date" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["fullName", "category", "dailyWage"]
+    },
+    "AttendanceRecord": {
+      "title": "Attendance Record",
+      "description": "Record of a worker's daily attendance status",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "workerId": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "time": { "type": "string" },
+        "status": { "type": "string", "enum": ["present", "absent", "half", "off"] },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["workerId", "date", "status"]
+    },
+    "AdvanceRecord": {
+      "title": "Advance Record",
+      "description": "Financial advance given to a worker",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "workerId": { "type": "string" },
+        "amount": { "type": "number" },
+        "date": { "type": "string", "format": "date" },
+        "reason": { "type": "string" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["workerId", "amount", "date"]
+    },
+    "PenaltyRecord": {
+      "title": "Penalty Record",
+      "description": "Financial penalty applied to a worker",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "workerId": { "type": "string" },
+        "amount": { "type": "number" },
+        "date": { "type": "string", "format": "date" },
+        "reason": { "type": "string" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["workerId", "amount", "date"]
+    },
+    "PaymentRecord": {
+      "title": "Payment Record",
+      "description": "Salary payment record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "workerId": { "type": "string" },
+        "amount": { "type": "number" },
+        "date": { "type": "string", "format": "date" },
+        "method": { "type": "string", "enum": ["cash", "transfer", "check"] },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["workerId", "amount", "date", "method"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Inventory product",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string", "enum": ["Boissons", "Nourriture", "Glaces", "Produits nettoyage", "Autres"] },
+        "stockQuantity": { "type": "number" },
+        "minStock": { "type": "number" },
+        "buyPrice": { "type": "number" },
+        "sellPrice": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "category", "stockQuantity"]
+    },
+    "DailyStats": {
+      "title": "Daily Stats",
+      "description": "Summary of daily financials and operations",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string", "format": "date" },
+        "totalRevenue": { "type": "number" },
+        "expenses": { "type": "number" },
+        "stockConsumption": { "type": "number" },
+        "reservationsCount": { "type": "number" },
+        "clientsCount": { "type": "number" },
+        "netProfit": { "type": "number" }
+      },
+      "required": ["date"]
+    },
+    "AppSettings": {
+      "title": "App Settings",
+      "description": "Global application settings and positions config",
+      "type": "object",
+      "properties": {
+        "positions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string" },
+              "count": { "type": "number" }
+            }
+          }
+        },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  },
+  "firestore": {
+    "reservations": {
+      "schema": "Reservation",
+      "description": "Collection of all reservations"
+    },
+    "workers": {
+      "schema": "Worker",
+      "description": "Collection of all workers"
+    },
+    "attendance": {
+      "schema": "AttendanceRecord",
+      "description": "Daily attendance records for workers"
+    },
+    "advances": {
+      "schema": "AdvanceRecord",
+      "description": "Cash advances per worker"
+    },
+    "penalties": {
+      "schema": "PenaltyRecord",
+      "description": "Salary penalties per worker"
+    },
+    "payments": {
+      "schema": "PaymentRecord",
+      "description": "Final salary payments"
+    },
+    "inventory": {
+      "schema": "Product",
+      "description": "Collection of all products in stock"
+    },
+    "daily_stats": {
+      "schema": "DailyStats",
+      "description": "Historical daily statistics"
+    },
+    "settings": {
+      "schema": "AppSettings",
+      "description": "Application configuration"
+    }
+  }
+}

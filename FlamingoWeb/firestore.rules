@@ -1,0 +1,324 @@
+  rules_version = '2';
+  service cloud.firestore {
+    match /databases/{database}/documents {
+      // Pillar 0: Default deny
+      match /{document=**} {
+        allow read, write: if false;
+      }
+
+      // --- Pillar 3: GLOBALS & HELPERS ---
+      function isSignedIn() { return request.auth != null; }
+      function isEmailVerified() { return request.auth.token.email_verified == true; }
+      
+      // Auth tokens do not contain custom claims. We lookup roles.
+      function isAdmin() { 
+        return isSignedIn() && (
+          request.auth.token.email == 'waelbenabid1@gmail.com' ||
+          request.auth.token.email == 'abidos.games@gmail.com' ||
+          request.auth.token.role == 'admin' ||
+          exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        );
+      }
+
+      function ownWorkerDocHasRole(role) {
+        return isSignedIn() &&
+          exists(/databases/$(database)/documents/workers/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/workers/$(request.auth.uid)).data.role == role;
+      }
+
+      function isOwnWorkerProfile(data) {
+        return isSignedIn() && (
+          data.uid == request.auth.uid ||
+          data.email == request.auth.token.email
+        );
+      }
+      
+      function hasStaffClaimRole() {
+        return isSignedIn() &&
+          request.auth.token.role in ['responsable', 'serveur', 'cuisinier', 'barman'];
+      }
+
+      function isResponsable() {
+        return isSignedIn() && (
+          request.auth.token.role == 'responsable' ||
+          ownWorkerDocHasRole('responsable')
+        );
+      }
+
+      function isServeur() {
+        return isSignedIn() && (
+          request.auth.token.role == 'serveur' ||
+          ownWorkerDocHasRole('serveur')
+        );
+      }
+
+      function isCuisinier() {
+        return isSignedIn() && (
+          request.auth.token.role == 'cuisinier' ||
+          ownWorkerDocHasRole('cuisinier')
+        );
+      }
+
+      function isBarman() {
+        return isSignedIn() && (
+          request.auth.token.role == 'barman' ||
+          ownWorkerDocHasRole('barman')
+        );
+      }
+
+      function isEmployee() {
+        return isSignedIn() && (
+          exists(/databases/$(database)/documents/workers/$(request.auth.uid)) ||
+          exists(/databases/$(database)/documents/employees/$(request.auth.uid)) ||
+          hasStaffClaimRole()
+        );
+      }
+
+      function isValidId(id) { 
+        return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+      }
+      
+      function incoming() { return request.resource.data; }
+      function existing() { return resource.data; }
+
+      // --- Pillar 2: ENTITY VALIDATORS ---
+      
+      function isValidReservation(data) {
+        return data.firstName is string && data.firstName.size() <= 50 &&
+              data.lastName is string && data.lastName.size() <= 50 &&
+              data.phone is string && data.phone.size() <= 20 &&
+              data.adults is number && data.adults >= 0 &&
+              data.children is number && data.children >= 0 &&
+              data.positionType is string && data.positionType.size() <= 50 &&
+              data.status in ['confirmed', 'pending', 'cancelled', 'absent'] &&
+              data.createdAt is timestamp && data.updatedAt is timestamp;
+      }
+
+      function isValidWorker(data) {
+        return data.fullName is string && data.fullName.size() <= 100 &&
+              data.category in ['Responsable', 'Serveur', 'Cuisinier', 'Barman'] &&
+              data.dailyWage is number && data.dailyWage >= 0;
+      }
+
+      function isValidAttendance(data) {
+        return isValidId(data.workerId) &&
+              data.date is string && data.date.size() <= 20 &&
+              data.status in ['present', 'absent', 'half', 'off'];
+      }
+
+      function isValidAttendanceMonth(data) {
+        return isValidId(data.workerId) &&
+              data.month is string && data.month.matches('^[0-9]{4}-[0-9]{2}$') &&
+              data.days is map &&
+              data.updatedAt is timestamp;
+      }
+
+      function isValidTransaction(data) {
+        return isValidId(data.workerId) &&
+              data.amount is number && data.amount > 0 &&
+              data.date is string && data.date.size() <= 20 &&
+              data.timestamp is number &&
+              data.createdAt is timestamp && data.updatedAt is timestamp &&
+              // Pillar 1: Relational Sync
+              exists(/databases/$(database)/documents/workers/$(data.workerId));
+      }
+
+      function isValidPayment(data) {
+        return isValidTransaction(data) &&
+              (!('method' in data) || (data.method is string && data.method.size() <= 50));
+      }
+
+      function isValidSale(data) {
+        return isValidId(data.productId) &&
+              data.productName is string && data.productName.size() <= 100 &&
+              data.quantity is number && data.quantity > 0 &&
+              data.unitBuyPrice is number && data.unitBuyPrice >= 0 &&
+              data.unitSellPrice is number && data.unitSellPrice >= 0 &&
+              data.totalCost is number && data.totalCost >= 0 &&
+              data.totalPrice is number && data.totalPrice >= 0 &&
+              data.date is string && data.date.size() <= 20 &&
+              data.timestamp is number &&
+              data.createdAt is timestamp && data.updatedAt is timestamp &&
+              exists(/databases/$(database)/documents/inventory/$(data.productId));
+      }
+
+      function isValidMenuCategory(data) {
+        return data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+              (data.description == null || data.description is string) &&
+              (data.display_order == null || data.display_order is number) &&
+              (data.order == null || data.order is number) &&
+              (data.available == null || data.available is bool) &&
+              (data.createdAt == null || data.createdAt is timestamp) &&
+              (data.updatedAt == null || data.updatedAt is timestamp);
+      }
+
+      function isValidMenuItem(data) {
+        return data.name is string && data.name.size() > 0 && data.name.size() <= 150 &&
+              (data.description == null || data.description is string) &&
+              (data.price is number && data.price >= 0) &&
+              (data.categoryId == null || isValidId(data.categoryId)) &&
+              (data.category_id == null || isValidId(data.category_id)) &&
+              (data.available == null || data.available is bool) &&
+              (data.is_available == null || data.is_available is bool) &&
+              (data.createdAt == null || data.createdAt is timestamp) &&
+              (data.updatedAt == null || data.updatedAt is timestamp);
+      }
+
+      function isValidTableOrder(data) {
+        return isValidId(data.server_id) &&
+              data.server_name is string && data.server_name.size() > 0 && data.server_name.size() <= 100 &&
+              data.table_number is string && data.table_number.size() > 0 && data.table_number.size() <= 100 &&
+              data.status in ['pending', 'preparing', 'ready', 'paid'] &&
+              data.items is list && data.items.size() > 0 && data.items.size() <= 100 &&
+              data.total_price is number && data.total_price >= 0 &&
+              data.created_at is timestamp &&
+              data.updated_at is timestamp;
+      }
+
+      // --- 3. COLLECTIONS ---
+
+      // Reservations
+      match /reservations/{reservationId} {
+        allow get: if isSignedIn() && isValidId(reservationId);
+        allow list: if isSignedIn() && (isAdmin() || isEmployee()); 
+        allow create: if (isAdmin() || isEmployee()) && isValidReservation(incoming());
+        allow update: if (isAdmin() || isEmployee()) && (
+          // Action: Admin full edit
+          (isAdmin() && isValidReservation(incoming())) ||
+          // Action: Employee status update (Pillar 4)
+          (isEmployee() && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'notes', 'updatedAt']))
+        );
+        allow delete: if isAdmin();
+      }
+
+      // Workers
+      match /workers/{workerId} {
+        allow get: if isValidId(workerId) && (
+          isAdmin() ||
+          isResponsable() ||
+          hasStaffClaimRole() ||
+          (isSignedIn() && resource.data.uid == request.auth.uid) ||
+          (isSignedIn() && resource.data.email == request.auth.token.email)
+        );
+        allow list: if isAdmin() || isResponsable() || hasStaffClaimRole() || isOwnWorkerProfile(resource.data);
+        allow create: if isAdmin() && isValidWorker(incoming());
+        allow update: if isAdmin() && isValidWorker(incoming());
+        allow delete: if isAdmin();
+      }
+
+      // Attendance
+      match /attendance/{recordId} {
+        allow get: if isValidId(recordId) && (isAdmin() || isResponsable() || hasStaffClaimRole());
+        allow list: if isAdmin() || isResponsable() || hasStaffClaimRole();
+        allow create: if isAdmin() && isValidId(recordId) && isValidAttendance(incoming());
+        allow update: if isAdmin() && isValidAttendance(incoming());
+        allow delete: if isAdmin();
+      }
+
+      match /workers/{workerId}/attendance_months/{monthId} {
+        allow get: if isValidId(workerId) && monthId.matches('^[0-9]{4}-[0-9]{2}$') && (isAdmin() || isResponsable() || hasStaffClaimRole());
+        allow list: if isAdmin() || isResponsable() || hasStaffClaimRole();
+        allow create: if isAdmin() && isValidId(workerId) && monthId.matches('^[0-9]{4}-[0-9]{2}$') && isValidAttendanceMonth(incoming());
+        allow update: if isAdmin() && isValidId(workerId) && monthId.matches('^[0-9]{4}-[0-9]{2}$') && isValidAttendanceMonth(incoming());
+        allow delete: if isAdmin();
+      }
+
+      // Financial Records
+      match /advances/{recordId} {
+        allow get: if isAdmin() && isValidId(recordId);
+        allow list: if isAdmin();
+        allow create: if isAdmin() && isValidId(recordId) && isValidTransaction(incoming());
+        allow update: if isAdmin() && isValidTransaction(incoming());
+        allow delete: if isAdmin();
+      }
+
+      match /penalties/{recordId} {
+        allow get: if isAdmin() && isValidId(recordId);
+        allow list: if isAdmin();
+        allow create: if isAdmin() && isValidId(recordId) && isValidTransaction(incoming());
+        allow update: if isAdmin() && isValidTransaction(incoming());
+        allow delete: if isAdmin();
+      }
+
+      match /payments/{recordId} {
+        allow get: if isAdmin() && isValidId(recordId);
+        allow list: if isAdmin();
+        allow create: if isAdmin() && isValidId(recordId) && isValidPayment(incoming());
+        allow update: if isAdmin() && isValidPayment(incoming());
+        allow delete: if isAdmin();
+      }
+
+      // Inventory
+      match /inventory/{productId} {
+        allow get: if isValidId(productId) && (isAdmin() || isResponsable() || isCuisinier() || isBarman());
+        allow list: if isAdmin() || isResponsable() || isCuisinier() || isBarman();
+        allow create, update: if isAdmin() || isResponsable() || isCuisinier() || isBarman();
+        allow delete: if isAdmin();
+      }
+
+      // Positions
+      match /positions/{positionId} {
+        allow get: if isSignedIn() && isValidId(positionId);
+        allow list: if isSignedIn();
+        allow create, update: if isAdmin();
+        allow delete: if isAdmin();
+      }
+
+      // Sales
+      match /sales/{saleId} {
+        allow get: if (isAdmin() || isEmployee()) && isValidId(saleId);
+        allow list: if isAdmin() || isEmployee();
+        allow create: if isAdmin() && isValidId(saleId) && isValidSale(incoming());
+        allow update: if isAdmin() && isValidSale(incoming());
+        allow delete: if isAdmin();
+      }
+
+      // Daily Stats
+      match /daily_stats/{statId} {
+        allow read: if isAdmin();
+        allow write: if isAdmin();
+      }
+
+      // Settings
+      match /settings/{settingId} {
+        allow read: if isSignedIn();
+        allow write: if isAdmin();
+      }
+
+      // Menu categories
+      match /menu_categories/{categoryId} {
+        allow get: if isSignedIn() && isValidId(categoryId);
+        allow list: if isSignedIn();
+        allow create: if (isAdmin() || isResponsable()) && isValidMenuCategory(incoming());
+        allow update: if (isAdmin() || isResponsable()) && isValidMenuCategory(incoming());
+        allow delete: if isAdmin();
+      }
+
+      // Menu items
+      match /menu_items/{itemId} {
+        allow get: if isSignedIn() && isValidId(itemId);
+        allow list: if isSignedIn();
+        allow create: if (isAdmin() || isResponsable()) && isValidMenuItem(incoming());
+        allow update: if (isAdmin() || isResponsable()) && isValidMenuItem(incoming());
+        allow delete: if isAdmin();
+      }
+
+      // Table orders
+      match /table_orders/{orderId} {
+        allow get: if isSignedIn() && isValidId(orderId);
+        allow list: if isAdmin() || isResponsable() || isServeur() || isCuisinier() || isBarman();
+        allow create: if (isAdmin() || isResponsable() || isServeur()) && isValidTableOrder(incoming());
+        allow update: if isSignedIn() && (isAdmin() || isResponsable() || isServeur() || isCuisinier() || isBarman()) && (
+          (isAdmin() && isValidTableOrder(incoming())) ||
+          ((isResponsable() || isServeur() || isCuisinier() || isBarman()) && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updated_at']))
+        );
+        allow delete: if isAdmin();
+      }
+
+      // Role Lists
+      match /admins/{userId} {
+        allow read: if isSignedIn();
+        allow write: if false;
+      }
+    }
+  }

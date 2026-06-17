@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+
+    <!--
+        FLAMINGO THEME — LIGHT PREMIUM
+        "Rose · Bord de Mer · Élégance"
+
+        Primary   → Flamingo Rose  (#FF7A85)
+        Secondary → Bleu Marine    (#1A365D)
+        Accent    → Or Soleil      (#FCD34D)
+        Background→ Sable Chaud    (#FAFAF9)
+        Text      → Bleu Marine    (#1A365D) / Gris doux
+    -->
+
+    <!-- Background layers (Light) -->
+    <color name="background">#FAFAF9</color>      <!-- Sable chaud -->
+    <color name="surface">#FFFFFF</color>           <!-- Surface pure blanche -->
+    <color name="surfaceVariant">#FFF0F1</color>    <!-- Surface légèrement rosée -->
+    <color name="surfaceElevated">#FFE8EA</color>   <!-- Modal, dialog overlay -->
+
+    <!-- Primary: Flamingo Rose — main CTAs, active states -->
+    <color name="primary">#FF7A85</color>
+    <color name="onPrimary">#FFFFFF</color>
+    <color name="primaryContainer">#FFE4E7</color>
+    <color name="onPrimaryContainer">#3D0010</color>
+
+    <!-- Secondary: Bleu Marine — secondary actions -->
+    <color name="secondary">#1A365D</color>
+    <color name="onSecondary">#FFFFFF</color>
+    <color name="secondaryContainer">#D1E0F5</color>
+    <color name="onSecondaryContainer">#001020</color>
+
+    <!-- Tertiary: Or Soleil — accents, badges -->
+    <color name="tertiary">#FCD34D</color>
+    <color name="onTertiary">#1A1000</color>
+    <color name="tertiaryContainer">#FFF3C0</color>
+    <color name="onTertiaryContainer">#2D2200</color>
+
+    <!-- Error: Rouge Alerte -->
+    <color name="error">#E63946</color>
+    <color name="onError">#FFFFFF</color>
+    <color name="errorContainer">#FFD9DC</color>
+    <color name="onErrorContainer">#3D0008</color>
+
+    <!-- Text / content (Light mode) -->
+    <color name="onBackground">#1A365D</color>     <!-- Bleu marine — titres -->
+    <color name="onSurface">#1A365D</color>
+    <color name="onSurfaceVariant">#4A5568</color> <!-- Gris bleuté — labels secondaires -->
+
+    <!-- Borders / dividers -->
+    <color name="outline">#E8B4B8</color>          <!-- Rose pâle -->
+    <color name="outlineVariant">#F5D5D8</color>
+
+    <!-- Status / nav bar -->
+    <color name="statusBar">#FAFAF9</color>
+
+    <!-- Aliases pour compatibilité avec le code existant -->
+    <color name="flamingo">#FF7A85</color>
+    <color name="flamingo_dark">#E05A6A</color>
+    <color name="flamingo_light">#FFB3BB</color>
+    <color name="navy">#1A365D</color>
+    <color name="navy_light">#2D5F9E</color>
+    <color name="sand">#FAFAF9</color>
+    <color name="sand_dark">#F0EDE8</color>
+    <color name="gold">#FCD34D</color>
+    <color name="surface_raised">#FFF0F1</color>
+    <color name="text_primary">#1A365D</color>
+    <color name="text_secondary">#4A5568</color>
+    <color name="accent">#FCD34D</color>
+    <color name="success">#10B981</color>
+    <color name="warning">#FCD34D</color>
+
+    <!-- Legacy aliases (compatibilité drawables existants) -->
+    <color name="ocean">#1A365D</color>
+    <color name="ocean_dark">#0F1E30</color>
+    <color name="ocean_light">#2D5F9E</color>
+
+    <!-- Glass / glow effects -->
+    <color name="glass_bg">#CCFFFFFF</color>          <!-- 80% blanc -->
+    <color name="glass_border">#33FF7A85</color>       <!-- 20% flamingo border -->
+    <color name="flamingo_glow">#4DFF7A85</color>      <!-- 30% flamingo — halo bouton -->
+    <color name="gold_glow">#33FCD34D</color>          <!-- 20% or — halo accent -->
+
+    <!-- Dark mode colors (utilisés dans values-night) -->
+    <color name="background_dark">#0E1C2E</color>
+    <color name="surface_dark">#1A2E42</color>
+    <color name="surfaceVariant_dark">#243852</color>
+    <color name="divider">#1AFF7A85</color>  <!-- 10% flamingo -->
+</resources>

@@ -1,0 +1,346 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Pillar 0: Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- HELPERS ---
+    function isSignedIn() { return request.auth != null; }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        // Admins permanents — ajouter les emails ici si besoin
+        request.auth.token.email == 'waelbenabid1@gmail.com' ||
+        request.auth.token.email == 'abidos.games@gmail.com' ||
+        // Admins dynamiques — ajouter via collection Firestore "admins/{uid}"
+        request.auth.token.role == 'admin' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function ownWorkerDocHasRole(role) {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/workers/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/workers/$(request.auth.uid)).data.role == role;
+    }
+
+    // Canonical 5-role claim system (no legacy aliases).
+    function hasStaffClaimRole() {
+      return isSignedIn() && (
+        request.auth.token.role in ['responsable', 'serveur', 'cuisinier', 'barman']
+      );
+    }
+
+    function isResponsable() {
+      return isSignedIn() && (
+        request.auth.token.role == 'responsable' ||
+        ownWorkerDocHasRole('responsable')
+      );
+    }
+
+    function isServeur() {
+      return isSignedIn() && (
+        request.auth.token.role == 'serveur' ||
+        ownWorkerDocHasRole('serveur')
+      );
+    }
+
+    function isCuisinier() {
+      return isSignedIn() && (
+        request.auth.token.role == 'cuisinier' ||
+        ownWorkerDocHasRole('cuisinier')
+      );
+    }
+
+    function isBarman() {
+      return isSignedIn() && (
+        request.auth.token.role == 'barman' ||
+        ownWorkerDocHasRole('barman')
+      );
+    }
+
+    // Any authenticated employee (any role except none).
+    function isEmployee() {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/workers/$(request.auth.uid)) ||
+        hasStaffClaimRole()
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    // --- VALIDATORS ---
+
+    function isValidReservation(data) {
+      return data.firstName is string && data.firstName.size() <= 50 &&
+             data.lastName is string && data.lastName.size() <= 50 &&
+             data.phone is string && data.phone.size() <= 20 &&
+             data.adults is number && data.adults >= 0 &&
+             data.children is number && data.children >= 0 &&
+             data.positionType is string && data.positionType.size() <= 50 &&
+             data.status in ['confirmed', 'pending', 'cancelled', 'absent'] &&
+             data.createdAt is timestamp && data.updatedAt is timestamp;
+    }
+
+    function isValidWorker(data) {
+      return data.fullName is string && data.fullName.size() <= 100 &&
+             data.category in ['Responsable', 'Serveur', 'Cuisinier', 'Barman',
+                                'Chef serveur', 'Cuisine', 'Sécurité', 'Nettoyage'] &&
+             data.dailyWage is number && data.dailyWage >= 0;
+    }
+
+    function isValidAttendance(data) {
+      return isValidId(data.workerId) &&
+             data.date is string && data.date.size() <= 20 &&
+             data.status in ['present', 'absent', 'half', 'off'];
+    }
+
+    function isValidAttendanceMonth(data) {
+      return isValidId(data.workerId) &&
+             data.month is string && data.month.matches('^[0-9]{4}-[0-9]{2}$') &&
+             data.days is map &&
+             data.updatedAt is timestamp;
+    }
+
+    function isValidTransaction(data) {
+      return isValidId(data.workerId) &&
+             data.amount is number && data.amount > 0 &&
+             data.date is string && data.date.size() <= 20 &&
+             data.timestamp is number &&
+             data.createdAt is timestamp && data.updatedAt is timestamp &&
+             exists(/databases/$(database)/documents/workers/$(data.workerId));
+    }
+
+    function isValidPosition(data) {
+      return data.type is string && data.type.size() > 0 && data.type.size() <= 50 &&
+             data.count is number && data.count >= 0 &&
+             data.price is number && data.price >= 0 &&
+             data.childPrice is number && data.childPrice >= 0;
+    }
+
+    function isValidMenuCategory(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             (data.description == null || data.description is string) &&
+             (data.display_order == null || data.display_order is number) &&
+             (data.order == null || data.order is number) &&
+             (data.available == null || data.available is bool) &&
+             (data.createdAt == null || data.createdAt is timestamp) &&
+             (data.updatedAt == null || data.updatedAt is timestamp);
+    }
+
+    function isValidMenuItem(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 150 &&
+             (data.description == null || data.description is string) &&
+             (data.price is number && data.price >= 0) &&
+             (data.categoryId == null || isValidId(data.categoryId)) &&
+             (data.category_id == null || isValidId(data.category_id)) &&
+             (data.available == null || data.available is bool) &&
+             (data.is_available == null || data.is_available is bool) &&
+             (data.createdAt == null || data.createdAt is timestamp) &&
+             (data.updatedAt == null || data.updatedAt is timestamp);
+    }
+
+    // Validator for table_orders created by the Web POS (serveur flow).
+    function isValidTableOrder(data) {
+      return isValidId(data.server_id) &&
+             data.server_name is string && data.server_name.size() > 0 && data.server_name.size() <= 100 &&
+             data.table_number is string && data.table_number.size() > 0 && data.table_number.size() <= 100 &&
+             data.status in ['pending', 'preparing', 'ready', 'paid'] &&
+             data.items is list && data.items.size() > 0 && data.items.size() <= 100 &&
+             data.total_price is number && data.total_price >= 0 &&
+             data.created_at is timestamp &&
+             data.updated_at is timestamp;
+    }
+
+    // Validator for walk-in payments (no reservation, server_id may be empty, items may be empty).
+    function isValidWalkInOrder(data) {
+      return data.source == 'walkin' &&
+             data.table_number is string && data.table_number.size() > 0 && data.table_number.size() <= 100 &&
+             data.status == 'paid' &&
+             data.items is list && data.items.size() <= 100 &&
+             data.total_price is number && data.total_price >= 0 &&
+             data.created_at is timestamp &&
+             data.updated_at is timestamp;
+    }
+
+    // Validator for iOS kitchen-order schema (tableNumber, items, status, category).
+    function isValidKitchenOrder(data) {
+      return data.tableNumber is number && data.tableNumber >= 0 &&
+             data.items is list && data.items.size() > 0 && data.items.size() <= 100 &&
+             data.status in ['pending', 'inProgress', 'ready', 'served'] &&
+             (data.category == null || data.category in ['cuisine', 'bar']) &&
+             (data.notes == null || data.notes is string) &&
+             data.createdAt is timestamp;
+    }
+
+    // --- COLLECTIONS ---
+
+    // Reservations
+    match /reservations/{reservationId} {
+      allow get: if isSignedIn() && isValidId(reservationId);
+      allow list: if isSignedIn() && (isAdmin() || isEmployee());
+      allow create: if (isAdmin() || isEmployee()) && isValidReservation(incoming());
+      allow update: if (isAdmin() || isEmployee()) && (
+        (isAdmin() && isValidReservation(incoming())) ||
+        (isEmployee() && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'notes', 'updatedAt']))
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Workers
+    match /workers/{workerId} {
+      allow get: if isValidId(workerId) && (
+        isAdmin() ||
+        isResponsable() ||
+        hasStaffClaimRole() ||
+        (isSignedIn() && resource.data.uid == request.auth.uid) ||
+        (isSignedIn() && resource.data.email == request.auth.token.email)
+      );
+      allow list: if isAdmin() || isResponsable() || hasStaffClaimRole();
+      allow create: if isAdmin() && isValidWorker(incoming());
+      allow update: if isAdmin() && isValidWorker(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // Attendance
+    match /attendance/{recordId} {
+      allow get: if isValidId(recordId) && (isAdmin() || isResponsable() || hasStaffClaimRole());
+      allow list: if isAdmin() || isResponsable() || hasStaffClaimRole();
+      allow create: if isAdmin() && isValidId(recordId) && isValidAttendance(incoming());
+      allow update: if isAdmin() && isValidAttendance(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /workers/{workerId}/attendance_months/{monthId} {
+      allow get: if isValidId(workerId) && monthId.matches('^[0-9]{4}-[0-9]{2}$') &&
+                    (isAdmin() || isResponsable() || hasStaffClaimRole());
+      allow list: if isAdmin() || isResponsable() || hasStaffClaimRole();
+      allow create: if isAdmin() && isValidId(workerId) &&
+                       monthId.matches('^[0-9]{4}-[0-9]{2}$') && isValidAttendanceMonth(incoming());
+      allow update: if isAdmin() && isValidId(workerId) &&
+                       monthId.matches('^[0-9]{4}-[0-9]{2}$') && isValidAttendanceMonth(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // Financial Records — Admin only
+    match /advances/{recordId} {
+      allow get: if isAdmin() && isValidId(recordId);
+      allow list: if isAdmin();
+      allow create: if isAdmin() && isValidId(recordId) && isValidTransaction(incoming());
+      allow update: if isAdmin() && isValidTransaction(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /penalties/{recordId} {
+      allow get: if isAdmin() && isValidId(recordId);
+      allow list: if isAdmin();
+      allow create: if isAdmin() && isValidId(recordId) && isValidTransaction(incoming());
+      allow update: if isAdmin() && isValidTransaction(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /payments/{recordId} {
+      allow get: if isAdmin() && isValidId(recordId);
+      allow list: if isAdmin();
+      allow create: if isAdmin() && isValidId(recordId) &&
+                       isValidTransaction(incoming()) &&
+                       incoming().method in ['cash', 'transfer', 'check'];
+      allow update: if isAdmin() && isValidTransaction(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // Inventory — Admin/Responsable (full CRUD) + Cuisinier + Barman (read + update)
+    match /inventory/{productId} {
+      allow get: if isValidId(productId) && (isAdmin() || isResponsable() || isCuisinier() || isBarman());
+      allow list: if isAdmin() || isResponsable() || isCuisinier() || isBarman();
+      allow create: if isAdmin() || isResponsable();
+      allow update: if isAdmin() || isResponsable() || isCuisinier() || isBarman();
+      allow delete: if isAdmin();
+    }
+
+    // Sales
+    match /sales/{saleId} {
+      allow get, list: if isAdmin() || isResponsable();
+      allow create: if isAdmin() || isResponsable() || isCuisinier() || isBarman() || isServeur();
+      allow update, delete: if isAdmin();
+    }
+
+    // Menu categories — read for all signed-in users, write Admin/Responsable
+    match /menu_categories/{categoryId} {
+      allow get: if isSignedIn() && isValidId(categoryId);
+      allow list: if isSignedIn();
+      allow create: if isAdmin() || (isResponsable() && isValidMenuCategory(incoming()));
+      allow update: if isAdmin() || (isResponsable() && isValidMenuCategory(incoming()));
+      allow delete: if isAdmin();
+    }
+
+    match /menu_items/{itemId} {
+      allow get: if isSignedIn() && isValidId(itemId);
+      allow list: if isSignedIn();
+      allow create: if isAdmin() || (isResponsable() && isValidMenuItem(incoming()));
+      allow update: if isAdmin() || (isResponsable() && isValidMenuItem(incoming()));
+      allow delete: if isAdmin();
+    }
+
+    // Daily Stats — Admin only
+    match /daily_stats/{statId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Settings — read all, write Admin
+    match /settings/{settingId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Admins list — read only
+    match /admins/{userId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // Positions & Rates
+    match /positions/{positionId} {
+      allow get: if isSignedIn() && isValidId(positionId);
+      allow list: if isSignedIn();
+      allow create: if isAdmin() && isValidPosition(incoming());
+      allow update: if isAdmin() && isValidPosition(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // Table orders — Web POS schema (server_id, server_name, table_number, status, items, total_price).
+    // Any signed-in employee can create/read/update status or modify items; delete is Admin only.
+    // Walk-in orders (source == 'walkin') use a relaxed validator: no server_id, items may be empty.
+    match /table_orders/{orderId} {
+      allow get: if isSignedIn() && isValidId(orderId);
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && (isValidTableOrder(incoming()) || isValidWalkInOrder(incoming()));
+      allow update: if isSignedIn() && (
+        (isAdmin() && isValidTableOrder(incoming())) ||
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updated_at']) ||
+        incoming().diff(existing()).affectedKeys().hasOnly(['items', 'total_price', 'updated_at'])
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Kitchen orders — iOS schema (tableNumber, items, status, category, notes, createdAt).
+    // Mirrors table_orders permissions but validates with the iOS-compatible isValidKitchenOrder.
+    match /kitchenOrders/{orderId} {
+      allow get: if isSignedIn() && isValidId(orderId);
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && isValidKitchenOrder(incoming());
+      allow update: if isSignedIn() && (
+        (isAdmin() && isValidKitchenOrder(incoming())) ||
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+      );
+      allow delete: if isAdmin();
+    }
+  }
+}

@@ -1,0 +1,306 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 60 5% 98%;              /* #FAFAF9 sable chaud */
+    --foreground: 215 56% 23%;            /* #1A365D bleu marine */
+    --card: 0 0% 100%;
+    --card-foreground: 215 56% 23%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 56% 23%;
+    --primary: 355 100% 74%;              /* #FF7A85 Flamingo rose */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 215 56% 23%;             /* #1A365D bleu marine */
+    --secondary-foreground: 0 0% 100%;
+    --muted: 355 15% 95%;
+    --muted-foreground: 215 30% 45%;
+    --accent: 46 97% 65%;                 /* #FCD34D or/soleil */
+    --accent-foreground: 215 56% 23%;
+    --destructive: 0 78% 55%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 355 15% 88%;
+    --input: 355 15% 88%;
+    --ring: 355 100% 74%;
+    --success: 132 67% 38%;
+    --success-foreground: 0 0% 98%;
+    --warning: 46 97% 65%;
+    --warning-foreground: 215 56% 23%;
+    --info: 215 56% 45%;
+    --info-foreground: 0 0% 98%;
+    --chart-1: 355 100% 74%;              /* Flamingo */
+    --chart-2: 215 56% 23%;              /* Navy */
+    --chart-3: 46 97% 65%;              /* Gold */
+    --chart-4: 355 60% 55%;              /* Rose foncé */
+    --chart-5: 215 30% 60%;             /* Bleu moyen */
+    --radius: 1rem;
+    --radius-lg: var(--radius);
+    --radius-md: calc(var(--radius) - 2px);
+    --radius-sm: calc(var(--radius) - 4px);
+    --sidebar: 60 5% 96%;
+    --sidebar-foreground: 215 56% 23%;
+    --sidebar-primary: 355 100% 74%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 355 15% 92%;
+    --sidebar-accent-foreground: 215 56% 23%;
+    --sidebar-border: 355 15% 85%;
+    --sidebar-ring: 355 100% 74%;
+    --font-sans: 'Inter', 'Segoe UI', sans-serif;
+    --font-heading: var(--font-sans);
+    --color-flamingo: #FF7A85;
+    --color-navy: #1A365D;
+    --color-sand: #FAFAF9;
+    --color-gold: #FCD34D;
+  }
+
+  /* ──────────────────────────────────────────────────────────────
+     FLAMINGO DARK — "Nuit Rose · Bord de Mer"
+     Background  : Bleu Marine Profond  (#0E1C2E)
+     Primary CTA : Flamingo Rose        (#FF7A85)
+     Secondary   : Bleu Mer             (#1A365D)
+     Accent      : Or Soleil            (#FCD34D)
+     Text        : Blanc Chaud          (#F7F7F6)
+  ────────────────────────────────────────────────────────────── */
+  .dark {
+    --background: 215 56% 12%;            /* #0E1C2E bleu nuit */
+    --foreground: 60 5% 97%;             /* #F7F7F6 blanc chaud */
+    --card: 215 50% 18%;                  /* surface foncée */
+    --card-foreground: 60 5% 97%;
+    --popover: 215 44% 22%;
+    --popover-foreground: 60 5% 97%;
+
+    /* Primary: Flamingo Rose */
+    --primary: 355 100% 74%;             /* #FF7A85 */
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary: Bleu Mer éclairci */
+    --secondary: 215 56% 35%;
+    --secondary-foreground: 60 5% 97%;
+
+    --muted: 215 44% 22%;
+    --muted-foreground: 355 20% 72%;     /* rose atténué */
+
+    /* Accent = Or Soleil */
+    --accent: 46 97% 65%;                /* #FCD34D */
+    --accent-foreground: 215 56% 12%;
+
+    --destructive: 0 79% 56%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 215 36% 28%;
+    --input: 215 44% 22%;
+    --ring: 355 100% 74%;                /* Flamingo focus ring */
+
+    --success: 132 67% 45%;
+    --success-foreground: 0 0% 98%;
+
+    --warning: 46 97% 65%;
+    --warning-foreground: 215 56% 12%;
+
+    --info: 215 70% 55%;
+    --info-foreground: 0 0% 98%;
+
+    /* Charts — palette Flamingo */
+    --chart-1: 355 100% 74%;             /* Flamingo rose */
+    --chart-2: 46 97% 65%;              /* Or soleil */
+    --chart-3: 132 67% 45%;             /* Vert succès */
+    --chart-4: 215 56% 45%;             /* Bleu mer */
+    --chart-5: 60 5% 70%;              /* Neutre */
+
+    /* Sidebar */
+    --sidebar: 215 56% 9%;
+    --sidebar-foreground: 60 5% 97%;
+    --sidebar-primary: 355 100% 74%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 215 44% 22%;
+    --sidebar-accent-foreground: 60 5% 97%;
+    --sidebar-border: 215 36% 22%;
+    --sidebar-ring: 355 100% 74%;
+
+    /* Flamingo custom tokens */
+    --color-flamingo: #FF7A85;
+    --color-flamingo-surface: #1A2E42;
+    --color-navy: #1A365D;
+    --color-gold: #FCD34D;
+    --color-pearl: #F7F7F6;
+    --color-mist: #8FA3B5;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: 'rlig' 1, 'calt' 1;
+    min-height: 100vh;
+    background:
+      radial-gradient(ellipse at top right, rgba(255, 122, 133, 0.07) 0%, transparent 50%),
+      radial-gradient(ellipse at bottom left, rgba(252, 211, 77, 0.04) 0%, transparent 40%),
+      linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--background)) 100%);
+  }
+
+  html {
+    @apply font-sans;
+    background: hsl(var(--background));
+  }
+
+  ::selection {
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+  }
+}
+
+@layer utilities {
+  .flamingo-gradient {
+    background: linear-gradient(135deg, #FF7A85 0%, #1A365D 100%);
+  }
+
+  .beach-gradient {
+    background: linear-gradient(135deg, #FF7A85 0%, #FCD34D 100%);
+  }
+
+  .sand-gradient {
+    background: linear-gradient(135deg, #FAFAF9 0%, #f0ede8 100%);
+  }
+
+  /* ── Glassmorphism — Flamingo style ─────────────────────────────── */
+  .glass-morphism {
+    background: rgba(14, 28, 46, 0.78);
+    backdrop-filter: blur(22px) saturate(1.4);
+    -webkit-backdrop-filter: blur(22px) saturate(1.4);
+    border: 1px solid rgba(255, 122, 133, 0.15);
+    box-shadow:
+      0 8px 32px rgba(0, 0, 0, 0.36),
+      inset 0 1px 0 rgba(255, 122, 133, 0.08);
+  }
+
+  .glass-light {
+    background: rgba(26, 46, 66, 0.60);
+    backdrop-filter: blur(16px) saturate(1.2);
+    -webkit-backdrop-filter: blur(16px) saturate(1.2);
+    border: 1px solid rgba(143, 163, 181, 0.10);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.28);
+  }
+
+  /* ── Neumorphism ──────────────────────────────────────────────── */
+  .neumorphic-card {
+    background: #1A2E42;
+    border-radius: 20px;
+    box-shadow:
+      6px 6px 16px rgba(8, 15, 28, 0.60),
+      -6px -6px 16px rgba(40, 60, 90, 0.30),
+      inset 0 1px 0 rgba(255, 122, 133, 0.06);
+    border: 1px solid rgba(26, 54, 93, 0.50);
+  }
+
+  .neumorphic-btn {
+    background: linear-gradient(145deg, #1e3553, #0f1e30);
+    box-shadow:
+      4px 4px 10px rgba(8, 15, 28, 0.55),
+      -4px -4px 10px rgba(40, 60, 90, 0.25);
+    transition: box-shadow 0.18s ease, transform 0.12s ease;
+  }
+
+  .neumorphic-btn:active {
+    box-shadow:
+      inset 4px 4px 10px rgba(8, 15, 28, 0.55),
+      inset -4px -4px 10px rgba(40, 60, 90, 0.25);
+    transform: scale(0.975);
+  }
+
+  /* ── Flamingo CTA button ──────────────────────────────────────── */
+  .btn-flamingo {
+    background: linear-gradient(135deg, #FF7A85 0%, #e05a6a 100%);
+    color: white;
+    font-weight: 700;
+    box-shadow: 0 4px 20px rgba(255, 122, 133, 0.40);
+    transition: box-shadow 0.2s ease, transform 0.15s ease;
+  }
+
+  .btn-flamingo:hover {
+    box-shadow: 0 6px 28px rgba(255, 122, 133, 0.60);
+    transform: translateY(-1px);
+  }
+
+  .btn-flamingo:active {
+    transform: translateY(0) scale(0.97);
+    box-shadow: 0 2px 12px rgba(255, 122, 133, 0.30);
+  }
+
+  /* btn-amber kept for backward compat */
+  .btn-amber {
+    background: linear-gradient(135deg, #FCD34D 0%, #f59e0b 100%);
+    color: rgba(26, 54, 93, 0.90);
+    font-weight: 700;
+    box-shadow: 0 4px 20px rgba(252, 211, 77, 0.35);
+    transition: box-shadow 0.2s ease, transform 0.15s ease;
+  }
+
+  .btn-amber:hover {
+    box-shadow: 0 6px 28px rgba(252, 211, 77, 0.55);
+    transform: translateY(-1px);
+  }
+
+  .btn-amber:active {
+    transform: translateY(0) scale(0.97);
+    box-shadow: 0 2px 12px rgba(252, 211, 77, 0.30);
+  }
+
+  /* ── Surface utilities ──────────────────────────────────────── */
+  .surface-elevated {
+    background: hsl(var(--card));
+    border: 1px solid rgba(26, 54, 93, 0.20);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  }
+
+  .surface-dark {
+    background: hsl(var(--background));
+    border: 1px solid rgba(26, 54, 93, 0.20);
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.18);
+  }
+
+  /* ── Flamingo gradient text ───────────────────────────────────── */
+  .text-flamingo {
+    background: linear-gradient(135deg, #FF7A85 0%, #FCD34D 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .text-sunset {
+    background: linear-gradient(135deg, #FF7A85 0%, #FCD34D 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .btn-primary {
+    @apply bg-[hsl(var(--primary))] text-white hover:opacity-90 active:opacity-75 transition-opacity;
+  }
+
+  .btn-success {
+    @apply bg-[hsl(var(--success))] text-white hover:opacity-90 active:opacity-75 transition-opacity;
+  }
+
+  .btn-warning {
+    @apply bg-[hsl(var(--warning))] text-white hover:opacity-90 active:opacity-75 transition-opacity;
+  }
+
+  .btn-destructive {
+    @apply bg-[hsl(var(--destructive))] text-white hover:opacity-90 active:opacity-75 transition-opacity;
+  }
+
+  .btn-secondary {
+    @apply bg-muted text-foreground border border-border hover:bg-muted/80 active:bg-muted transition-colors;
+  }
+
+  .modal-overlay {
+    @apply fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center;
+  }
+
+  .modal-content {
+    @apply bg-card text-card-foreground rounded-2xl shadow-2xl max-w-md w-full mx-4 surface-elevated;
+  }
+}

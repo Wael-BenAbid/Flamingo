@@ -1,0 +1,64 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Base application theme — Flamingo Light -->
+    <style name="Base.Theme.FlamingoAndroid" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Primary: Flamingo Rose -->
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorOnPrimary">@color/onPrimary</item>
+        <item name="colorPrimaryContainer">@color/primaryContainer</item>
+        <item name="colorOnPrimaryContainer">@color/onPrimaryContainer</item>
+
+        <!-- Secondary: Bleu Marine -->
+        <item name="colorSecondary">@color/secondary</item>
+        <item name="colorOnSecondary">@color/onSecondary</item>
+        <item name="colorSecondaryContainer">@color/secondaryContainer</item>
+        <item name="colorOnSecondaryContainer">@color/onSecondaryContainer</item>
+
+        <!-- Tertiary: Or Soleil -->
+        <item name="colorTertiary">@color/tertiary</item>
+        <item name="colorOnTertiary">@color/onTertiary</item>
+        <item name="colorTertiaryContainer">@color/tertiaryContainer</item>
+        <item name="colorOnTertiaryContainer">@color/onTertiaryContainer</item>
+
+        <!-- Surfaces -->
+        <item name="android:colorBackground">@color/background</item>
+        <item name="colorSurface">@color/surface</item>
+        <item name="colorOnSurface">@color/onSurface</item>
+        <item name="colorSurfaceVariant">@color/surfaceVariant</item>
+        <item name="colorOnSurfaceVariant">@color/onSurfaceVariant</item>
+        <item name="colorOutline">@color/outline</item>
+
+        <!-- Status bar: blanc (light mode) avec icônes sombres -->
+        <item name="android:statusBarColor">@color/statusBar</item>
+        <item name="android:windowLightStatusBar" tools:targetApi="m">true</item>
+        <item name="android:navigationBarColor">@color/background</item>
+        <item name="android:windowBackground">@color/background</item>
+
+        <!-- App chrome -->
+        <item name="colorSurfaceContainer">@color/surfaceVariant</item>
+        <item name="colorSurfaceContainerHigh">@color/surface</item>
+        <item name="colorOutlineVariant">@color/outlineVariant</item>
+        <item name="colorControlHighlight">@color/flamingo_light</item>
+
+        <item name="android:forceDarkAllowed">false</item>
+
+        <!-- Shapes arrondies Flamingo -->
+        <item name="shapeAppearanceSmallComponent">@style/ShapeAppearance.Flamingo.SmallComponent</item>
+        <item name="shapeAppearanceMediumComponent">@style/ShapeAppearance.Flamingo.MediumComponent</item>
+        <item name="shapeAppearanceLargeComponent">@style/ShapeAppearance.Flamingo.LargeComponent</item>
+    </style>
+
+    <style name="Theme.FlamingoAndroid" parent="Base.Theme.FlamingoAndroid" />
+
+    <!-- Shapes arrondies modernes -->
+    <style name="ShapeAppearance.Flamingo.SmallComponent" parent="ShapeAppearance.Material3.SmallComponent">
+        <item name="cornerSize">12dp</item>
+    </style>
+
+    <style name="ShapeAppearance.Flamingo.MediumComponent" parent="ShapeAppearance.Material3.MediumComponent">
+        <item name="cornerSize">20dp</item>
+    </style>
+
+    <style name="ShapeAppearance.Flamingo.LargeComponent" parent="ShapeAppearance.Material3.LargeComponent">
+        <item name="cornerSize">28dp</item>
+    </style>
+</resources>

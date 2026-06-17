@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+.env.local
+.env.*.local
+*.log
+devserver.out.log
+devserver.err.log
+tsconfig.app.tsbuildinfo
+tsconfig.node.tsbuildinfo
+.DS_Store
