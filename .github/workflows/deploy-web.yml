@@ -9,6 +9,7 @@ on:
       - 'firebase.json'
       - 'firestore.rules'
       - '.github/workflows/deploy-web.yml'
+  workflow_dispatch:
 
 jobs:
   build-and-deploy:
