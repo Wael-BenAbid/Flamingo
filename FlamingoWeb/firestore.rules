@@ -183,12 +183,16 @@
       // Reservations
       match /reservations/{reservationId} {
         allow get: if isSignedIn() && isValidId(reservationId);
-        allow list: if isSignedIn() && (isAdmin() || isEmployee()); 
+        allow list: if isSignedIn() && (isAdmin() || isEmployee());
         allow create: if (isAdmin() || isEmployee()) && isValidReservation(incoming());
         allow update: if (isAdmin() || isEmployee()) && (
-          // Action: Admin full edit
+          // Admin full edit
           (isAdmin() && isValidReservation(incoming())) ||
-          // Action: Employee status update (Pillar 4)
+          // Responsable: confirmation d'arrivée + gestion complète (position, paiement…)
+          (isResponsable() && incoming().diff(existing()).affectedKeys().hasOnly(
+            ['status', 'positionType', 'positionNumber', 'checkIn', 'notes', 'updatedAt', 'grandTotal', 'paidAt']
+          )) ||
+          // Autres employés : statut uniquement
           (isEmployee() && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'notes', 'updatedAt']))
         );
         allow delete: if isAdmin();

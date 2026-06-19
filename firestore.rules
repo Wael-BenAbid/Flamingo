@@ -11,10 +11,11 @@ service cloud.firestore {
 
     function isAdmin() {
       return isSignedIn() && (
-        // Admins permanents — ajouter les emails ici si besoin
+        // Admins permanents
         request.auth.token.email == 'waelbenabid1@gmail.com' ||
         request.auth.token.email == 'abidos.games@gmail.com' ||
-        // Admins dynamiques — ajouter via collection Firestore "admins/{uid}"
+        request.auth.token.email == 'admin@gmail.com' ||
+        // Admins dynamiques via collection Firestore "admins/{uid}"
         request.auth.token.role == 'admin' ||
         exists(/databases/$(database)/documents/admins/$(request.auth.uid))
       );
@@ -91,8 +92,7 @@ service cloud.firestore {
 
     function isValidWorker(data) {
       return data.fullName is string && data.fullName.size() <= 100 &&
-             data.category in ['Responsable', 'Serveur', 'Cuisinier', 'Barman',
-                                'Chef serveur', 'Cuisine', 'Sécurité', 'Nettoyage'] &&
+             data.category in ['Responsable', 'Serveur', 'Cuisinier', 'Barman'] &&
              data.dailyWage is number && data.dailyWage >= 0;
     }
 
@@ -189,6 +189,9 @@ service cloud.firestore {
       allow create: if (isAdmin() || isEmployee()) && isValidReservation(incoming());
       allow update: if (isAdmin() || isEmployee()) && (
         (isAdmin() && isValidReservation(incoming())) ||
+        (isResponsable() && incoming().diff(existing()).affectedKeys().hasOnly(
+          ['status', 'positionType', 'positionNumber', 'checkIn', 'notes', 'updatedAt', 'grandTotal', 'paidAt']
+        )) ||
         (isEmployee() && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'notes', 'updatedAt']))
       );
       allow delete: if isAdmin();

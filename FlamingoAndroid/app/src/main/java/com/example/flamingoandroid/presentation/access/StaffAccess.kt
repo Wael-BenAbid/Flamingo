@@ -81,7 +81,7 @@ object StaffAccess {
     fun defaultSection(role: String): AdminSection = when (normalize(role)) {
         ROLE_ADMIN, ROLE_RESPONSABLE -> AdminSection.DASHBOARD
         ROLE_CUISINIER, ROLE_BARMAN  -> AdminSection.KITCHEN_ORDERS
-        else                         -> AdminSection.DAILY_CHECK
+        else                         -> AdminSection.KITCHEN_ORDERS
     }
 
     fun roleLabel(role: String): String = when (normalize(role)) {

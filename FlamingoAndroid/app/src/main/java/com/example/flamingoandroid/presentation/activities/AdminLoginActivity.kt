@@ -82,13 +82,25 @@ class AdminLoginActivity : AppCompatActivity() {
         binding.tilPassword.error = null
     }
 
-    // Navigates to the correct Activity for the authenticated role.
+    // Routing direct par rôle — évite le flash Dashboard et tout accès non autorisé :
+    //   serveur    → TableOrderingActivity  (prendre commande)
+    //   cuisinier  → KitchenDashboardActivity (commandes cuisine)
+    //   barman     → KitchenDashboardActivity (commandes cuisine)
+    //   autres     → HomeActivity (section définie par StaffAccess.defaultSection)
     private fun navigateToRoleHome(role: String) {
-        val dest = when (StaffAccess.normalize(role)) {
-            StaffAccess.ROLE_CUISINE -> KitchenDashboardActivity::class.java
-            else -> HomeActivity::class.java
+        val user = firebaseService.getCurrentUser()
+        val normalizedRole = StaffAccess.normalize(role)
+        val intent = when (normalizedRole) {
+            StaffAccess.ROLE_SERVEUR -> Intent(this, TableOrderingActivity::class.java)
+                .putExtra(TableOrderingActivity.EXTRA_SERVER_ID, user?.uid.orEmpty())
+                .putExtra(TableOrderingActivity.EXTRA_SERVER_NAME,
+                    user?.displayName?.takeIf { it.isNotBlank() }
+                        ?: user?.email?.substringBefore("@") ?: "Serveur")
+            StaffAccess.ROLE_CUISINIER,
+            StaffAccess.ROLE_BARMAN -> Intent(this, KitchenDashboardActivity::class.java)
+            else -> Intent(this, HomeActivity::class.java)
         }
-        startActivity(Intent(this, dest))
+        startActivity(intent)
         finish()
     }
 

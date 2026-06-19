@@ -55,10 +55,8 @@ class HomeActivity : AppCompatActivity() {
         setupNavigation()
         applyRolePermissions()
 
-        if (savedInstanceState == null) {
-            openSection(AdminSection.DASHBOARD)
-            binding.navigationView.setCheckedItem(R.id.nav_dashboard)
-        }
+        // Ne pas ouvrir de section avant que le rôle soit résolu (évite le flash Dashboard).
+        // applyRolePermissions() ouvre la section correcte une fois le rôle connu.
     }
 
     private fun setupDrawerHeader() {
