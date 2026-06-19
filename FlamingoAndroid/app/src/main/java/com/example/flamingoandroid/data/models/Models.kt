@@ -24,13 +24,14 @@ data class Worker(
     val totalPaid: Double = 0.0,
     val lastPresenceDate: String? = null,
     val startDate: String? = null,
-    val createdAt: Timestamp? = null,
-    val updatedAt: Timestamp? = null,
+    // Any? accepte Timestamp, String ou null sans planter la désérialisation
+    @get:com.google.firebase.firestore.Exclude val createdAt: Any? = null,
+    @get:com.google.firebase.firestore.Exclude val updatedAt: Any? = null,
     val email: String = "",
     val phone: String = "",
     val position: String = "",
     val salary: Double = 0.0,
-    val joinDate: Timestamp? = null,
+    @get:com.google.firebase.firestore.Exclude val joinDate: Any? = null,
     val isActive: Boolean = true
 )
 
@@ -204,5 +205,10 @@ data class DashboardStats(
     val totalStaff: Int = 0,
     val dailyRevenue: Double = 0.0,
     val lowStockItems: Int = 0,
-    val pendingArrivals: Int = 0
+    val pendingArrivals: Int = 0,
+    val totalAdults: Int = 0,
+    val totalChildren: Int = 0,
+    val tablesServed: Int = 0,
+    val staffPresent: Int = 0,
+    val ordersRevenue: Double = 0.0,
 )

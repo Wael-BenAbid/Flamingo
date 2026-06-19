@@ -396,7 +396,7 @@ export function ReservationDateHeader({
       <div>
         <p
           className="font-bold text-sm"
-          style={{ color: isPast ? T.mist : T.pearl }}
+          style={{ color: isPast ? T.mist : '#111827' }}
         >
           {format(new Date(date), 'EEEE d MMMM yyyy', { locale: fr })}
         </p>

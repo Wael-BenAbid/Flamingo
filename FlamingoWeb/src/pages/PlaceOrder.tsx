@@ -507,6 +507,8 @@ const getTableStatus = (tableLabel: string) => {
           items: cartLines,
           total_price: totalPrice,
           updated_at: now,
+          server_id: user?.uid || '',
+          server_name: serverName,
         });
         setCart({});
         setActiveOrderId(null);

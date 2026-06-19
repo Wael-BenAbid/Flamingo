@@ -19,6 +19,12 @@ class ArrivalsViewModel(
     private val _confirmedArrivals = MutableStateFlow<List<Reservation>>(emptyList())
     val confirmedArrivals: StateFlow<List<Reservation>> = _confirmedArrivals
 
+    private val _cancelledArrivals = MutableStateFlow<List<Reservation>>(emptyList())
+    val cancelledArrivals: StateFlow<List<Reservation>> = _cancelledArrivals
+
+    private val _absentArrivals = MutableStateFlow<List<Reservation>>(emptyList())
+    val absentArrivals: StateFlow<List<Reservation>> = _absentArrivals
+
     private val _positions = MutableStateFlow<List<Position>>(emptyList())
     val positions: StateFlow<List<Position>> = _positions
 
@@ -43,6 +49,12 @@ class ArrivalsViewModel(
                 _confirmedArrivals.value = all
                     .filter { it.status.equals("confirmed", ignoreCase = true) }
                     .sortedBy { it.positionType + it.positionNumber }
+                _cancelledArrivals.value = all
+                    .filter { it.status.equals("cancelled", ignoreCase = true) }
+                    .sortedBy { it.time }
+                _absentArrivals.value = all
+                    .filter { it.status.equals("absent", ignoreCase = true) }
+                    .sortedBy { it.time }
             }
         }
     }
@@ -72,6 +84,13 @@ class ArrivalsViewModel(
     fun cancelArrival(reservationId: String) {
         viewModelScope.launch {
             reservationRepo.updateReservationStatus(reservationId, "cancelled")
+                .onFailure { _errorMessage.value = it.message }
+        }
+    }
+
+    fun revertToPending(reservationId: String) {
+        viewModelScope.launch {
+            reservationRepo.updateReservationStatus(reservationId, "pending")
                 .onFailure { _errorMessage.value = it.message }
         }
     }

@@ -81,7 +81,16 @@ class DashboardFragment : Fragment() {
         binding.tvDashboardReservations.text = stats.totalGuests.toString()
         binding.tvDashboardStaff.text = stats.totalStaff.toString()
         binding.tvDashboardStock.text = stats.lowStockItems.toString()
-        binding.tvDashboardSnapshot.text = "Occupation active: ${stats.occupiedRooms} | Réservations en attente: ${stats.pendingArrivals}"
+        binding.tvDashboardSnapshot.text = buildString {
+            append("Occupation active: ${stats.occupiedRooms}")
+            append(" | En attente: ${stats.pendingArrivals}")
+            append("\nAdultes: ${stats.totalAdults} | Enfants: ${stats.totalChildren}")
+            append(" | Tables servies: ${stats.tablesServed}")
+            append("\nStaff présent: ${stats.staffPresent}")
+            if (stats.ordersRevenue > 0) {
+                append(" | Conso: ${formatMoney(stats.ordersRevenue)}")
+            }
+        }
     }
 
     override fun onDestroyView() {

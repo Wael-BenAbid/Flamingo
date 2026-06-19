@@ -237,16 +237,19 @@ class MenuOrderingFirebaseService {
         orderId: String,
         items: List<TableOrderItem>,
         totalPrice: Double,
+        serverId: String = "",
+        serverName: String = "",
     ): Result<Unit> = try {
+        val payload = mutableMapOf<String, Any>(
+            "items" to items,
+            "total_price" to totalPrice,
+            "updated_at" to Timestamp.now(),
+        )
+        if (serverId.isNotBlank()) payload["server_id"] = serverId
+        if (serverName.isNotBlank()) payload["server_name"] = serverName
         db.collection("table_orders")
             .document(orderId)
-            .update(
-                mapOf(
-                    "items" to items,
-                    "total_price" to totalPrice,
-                    "updated_at" to Timestamp.now(),
-                )
-            )
+            .update(payload)
             .await()
         Result.success(Unit)
     } catch (error: Exception) {

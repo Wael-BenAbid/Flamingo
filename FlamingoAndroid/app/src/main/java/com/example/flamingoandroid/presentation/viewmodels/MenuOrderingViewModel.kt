@@ -169,6 +169,8 @@ class MenuOrderingViewModel(
                     orderId = existingOrderId,
                     items = items,
                     totalPrice = cartTotal(),
+                    serverId = serverId,
+                    serverName = serverName,
                 ).onSuccess {
                     _cart.value = emptyList()
                     _activeOrderId.value = null

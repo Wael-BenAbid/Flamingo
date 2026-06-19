@@ -1,7 +1,10 @@
 package com.example.flamingoandroid.presentation.screens.arrivals
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -18,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -48,6 +52,8 @@ private val Jade    = Color(0xFF2DC653)
 fun ArrivalsScreen(viewModel: ArrivalsViewModel) {
     val pending   by viewModel.pendingArrivals.collectAsState()
     val confirmed by viewModel.confirmedArrivals.collectAsState()
+    val cancelled by viewModel.cancelledArrivals.collectAsState()
+    val absent    by viewModel.absentArrivals.collectAsState()
     val positions by viewModel.positions.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val errorMsg  by viewModel.errorMessage.collectAsState()
@@ -95,6 +101,8 @@ fun ArrivalsScreen(viewModel: ArrivalsViewModel) {
             ) {
                 // ── Header ─────────────────────────────────────────────
                 item {
+                    val totalAdults   = (pending + confirmed).sumOf { it.adults }
+                    val totalChildren = (pending + confirmed).sumOf { it.children }
                     Column(modifier = Modifier.padding(bottom = 4.dp)) {
                         Text(
                             text = today,
@@ -108,6 +116,35 @@ fun ArrivalsScreen(viewModel: ArrivalsViewModel) {
                             color = Mist,
                             letterSpacing = 1.sp,
                         )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Teal.copy(alpha = 0.15f))
+                                    .padding(horizontal = 10.dp, vertical = 3.dp),
+                            ) {
+                                Text(
+                                    text = "$totalAdults Adultes",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Teal,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Amber.copy(alpha = 0.15f))
+                                    .padding(horizontal = 10.dp, vertical = 3.dp),
+                            ) {
+                                Text(
+                                    text = "$totalChildren Enfants",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Amber,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -166,7 +203,24 @@ fun ArrivalsScreen(viewModel: ArrivalsViewModel) {
                     }
                 } else {
                     items(filteredConfirmed, key = { "confirmed-${it.id}" }) { reservation ->
-                        ConfirmedArrivalCard(reservation = reservation)
+                        ConfirmedArrivalCard(
+                            reservation = reservation,
+                            onRevert    = { viewModel.revertToPending(reservation.id) },
+                        )
+                    }
+                }
+
+                // ── Section ANNULÉS ─────────────────────────────────────
+                if (cancelled.isNotEmpty() || absent.isNotEmpty()) {
+                    item {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        SectionHeader(label = "ANNULÉS / ABSENTS", count = cancelled.size + absent.size, color = Crimson)
+                    }
+                    items(cancelled, key = { "cancelled-${it.id}" }) { reservation ->
+                        CancelledArrivalCard(reservation = reservation, statusLabel = "Annulé")
+                    }
+                    items(absent, key = { "absent-${it.id}" }) { reservation ->
+                        CancelledArrivalCard(reservation = reservation, statusLabel = "Absent")
                     }
                 }
 
@@ -299,12 +353,17 @@ private fun PendingArrivalCard(
                 }
             }
 
-            // Phone
+            // Phone (cliquable → app téléphone)
             if (reservation.phone.isNotBlank()) {
+                val context = LocalContext.current
+                val phone   = reservation.phone.replace(Regex("[\\s\\-().]"), "")
                 Text(
                     text = reservation.phone,
                     style = MaterialTheme.typography.labelSmall,
-                    color = Mist,
+                    color = Teal,
+                    modifier = Modifier.clickable {
+                        context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone")))
+                    },
                 )
             }
 
@@ -345,7 +404,10 @@ private fun PendingArrivalCard(
 
 // ── Confirmed arrival card ──────────────────────────────────────────────────
 @Composable
-private fun ConfirmedArrivalCard(reservation: Reservation) {
+private fun ConfirmedArrivalCard(
+    reservation: Reservation,
+    onRevert: () -> Unit,
+) {
     val name = "${reservation.firstName} ${reservation.lastName}".trim().ifBlank { "Client" }
     val posLabel = buildString {
         reservation.positionType.takeIf { it.isNotBlank() }?.let { append(it) }
@@ -376,8 +438,60 @@ private fun ConfirmedArrivalCard(reservation: Reservation) {
                     color = Mist,
                 )
             }
-            Icon(Icons.Default.Check, contentDescription = "Confirmé", tint = Jade,
-                modifier = Modifier.size(20.dp))
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(Icons.Default.Check, contentDescription = "Confirmé", tint = Jade,
+                    modifier = Modifier.size(20.dp))
+                TextButton(
+                    onClick = onRevert,
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                ) {
+                    Text("Modifier", color = Mist, style = MaterialTheme.typography.labelSmall,
+                        fontSize = 9.sp)
+                }
+            }
+        }
+    }
+}
+
+// ── Cancelled / absent card ─────────────────────────────────────────────────
+@Composable
+private fun CancelledArrivalCard(reservation: Reservation, statusLabel: String) {
+    val name = "${reservation.firstName} ${reservation.lastName}".trim().ifBlank { "Client" }
+    val posLabel = buildString {
+        reservation.positionType.takeIf { it.isNotBlank() }?.let { append(it) }
+        reservation.positionNumber?.takeIf { it.isNotBlank() }?.let { append(" N°$it") }
+        if (isEmpty()) append("—")
+    }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Crimson.copy(alpha = 0.07f)),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Crimson.copy(alpha = 0.35f)),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            AvatarCircle(name = name, color = Crimson)
+            Column(modifier = Modifier.weight(1f)) {
+                Text(name, color = Pearl, fontWeight = FontWeight.SemiBold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    text = "${reservation.adults}A + ${reservation.children}ENF  •  $posLabel",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Mist,
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Crimson.copy(alpha = 0.2f))
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            ) {
+                Text(statusLabel, color = Crimson, style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold)
+            }
         }
     }
 }

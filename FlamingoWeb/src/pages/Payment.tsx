@@ -48,6 +48,8 @@ interface TableOrder {
   children?: number;
   clientName?: string;
   source?: string;
+  created_at?: import('firebase/firestore').Timestamp | null;
+  paidAt?: unknown;
 }
 
 const norm = (v: unknown) => Math.max(0, Number(v) || 0);
@@ -60,6 +62,7 @@ const DISCOUNT_OPTIONS = [5, 10, 20, 25] as const;
 function buildReceiptHtml(params: {
   tableLabel: string;
   clientName: string;
+  serverName?: string;
   adults: number;
   children: number;
   adultUnitPrice: number;
@@ -76,7 +79,7 @@ function buildReceiptHtml(params: {
   timeStr: string;
 }): string {
   const {
-    tableLabel, clientName, adults, children,
+    tableLabel, clientName, serverName, adults, children,
     adultUnitPrice, childUnitPrice, reservationTotal,
     orderItems, orderTotal, subtotal,
     discountPercent, discountAmount, finalTotal,
@@ -92,7 +95,7 @@ function buildReceiptHtml(params: {
   const clientTicket = `
 <div class="ticket">
   <div class="center bold xl">FLAMINGO</div>
-  <div class="center sub">Beach Club &amp; Restaurant</div>
+  <div class="center sub">coucou beach</div>
   <div class="center copy-label">── COPIE CLIENT ──</div>
   <div class="sep">${SEP}</div>
   ${row('Date :', dateStr)}
@@ -137,13 +140,14 @@ function buildReceiptHtml(params: {
   const restoTicket = `
 <div class="ticket" style="page-break-before:always;">
   <div class="center bold xl">FLAMINGO</div>
-  <div class="center sub">Beach Club &amp; Restaurant</div>
+  <div class="center sub">coucou beach</div>
   <div class="center copy-label" style="background:#222;color:#fff;">── COPIE ÉTABLISSEMENT ──</div>
   <div class="sep">${SEP}</div>
   ${row('Date :', dateStr)}
   ${row('Heure :', timeStr)}
   ${row('Table :', `<strong>${tableLabel}</strong>`)}
   ${clientName !== '—' ? row('Client :', clientName) : ''}
+  ${serverName && serverName !== '—' ? row('Serveur :', serverName) : ''}
   <div class="sep" style="margin:2mm 0">${SEP}</div>
 
   ${(adults > 0 || children > 0) ? `
@@ -343,6 +347,7 @@ function WalkInDialog({
     const html = buildReceiptHtml({
       tableLabel,
       clientName: clientName.trim() || '—',
+      serverName: '',
       adults, children, adultUnitPrice, childUnitPrice, reservationTotal,
       orderItems: cartLines, orderTotal, subtotal,
       discountPercent, discountAmount, finalTotal, remarque,
@@ -774,6 +779,7 @@ function InvoiceDialog({
     const now = new Date();
     const html = buildReceiptHtml({
       tableLabel, clientName, adults, children,
+      serverName: order?.server_name || '',
       adultUnitPrice, childUnitPrice, reservationTotal,
       orderItems, orderTotal, subtotal,
       discountPercent, discountAmount, finalTotal,
@@ -885,6 +891,12 @@ function InvoiceDialog({
                   <span className="text-slate-500">Nom</span>
                   <span className="font-medium">{clientName}</span>
                 </div>
+                {order?.server_name && !isWalkIn && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-500">Serveur</span>
+                    <span className="font-medium text-flamingo">{order.server_name}</span>
+                  </div>
+                )}
                 {isWalkIn && (
                   <div className="flex justify-between text-sm">
                     <span className="text-slate-500 text-[10px] italic">Sans réservation</span>
@@ -1105,7 +1117,7 @@ export default function Payment() {
         setTableOrders(
           (data || []).filter((o) => o.status && !['cancelled'].includes(o.status)),
         ),
-      [],
+      [where('created_at', '>=', Timestamp.fromDate(startOfToday()))],
     );
 
     return () => {

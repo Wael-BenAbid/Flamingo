@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { format, startOfToday } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Calendar as CalendarIcon, Plus, Search } from 'lucide-react';
+import { Calendar as CalendarIcon, Plus, Search, Users } from 'lucide-react';
 import { useReservations, type Reservation, type ReservationFormData } from '@/hooks/useReservations';
 import {
   GlassReservationCard,
@@ -51,6 +51,10 @@ export default function Reservations() {
   const activeGroups = getReservationsByMonth(selectedMonth, false);
   const pastGroups   = getReservationsByMonth(selectedMonth, true);
   const displayed    = search.trim() ? searchReservations(search) : null;
+
+  const monthResevations = [...activeGroups, ...pastGroups].flatMap((g) => g.reservations);
+  const monthTotalAdults   = monthResevations.reduce((s, r) => s + (r.adults || 0), 0);
+  const monthTotalChildren = monthResevations.reduce((s, r) => s + (r.children || 0), 0);
 
   const selectedDate         = formData.date ?? format(startOfToday(), 'yyyy-MM-dd');
   const selectedPositionType = formData.positionType ?? '';
@@ -329,6 +333,20 @@ export default function Reservations() {
             </DialogContent>
           </Dialog>
         </div>
+      </div>
+
+      {/* ── Stats adultes/enfants du mois ─────────────────────────── */}
+      <div className="flex flex-wrap items-center gap-3 text-sm">
+        <span className="flex items-center gap-1.5 font-semibold text-foreground">
+          <Users className="w-4 h-4 text-primary" />
+          {monthTotalAdults} Adultes
+        </span>
+        <span className="text-foreground/30">·</span>
+        <span className="flex items-center gap-1.5 font-semibold text-foreground">
+          {monthTotalChildren} Enfants
+        </span>
+        <span className="text-foreground/30">·</span>
+        <span className="text-foreground/50 text-xs">{monthResevations.length} réservations ce mois</span>
       </div>
 
       {/* ── Search bar ────────────────────────────────────────────── */}

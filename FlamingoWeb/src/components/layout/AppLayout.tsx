@@ -53,14 +53,19 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     <div className="flex h-screen bg-background text-foreground overflow-hidden">
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex flex-col w-72 bg-white border-r border-border shadow-sm">
-        <div className="p-8">
-          <div className="mb-10">
-            <h1 className="text-2xl font-serif tracking-widest uppercase border-b border-primary/20 pb-4 text-primary">
-              Flamingo
-            </h1>
-            <p className="text-[10px] uppercase tracking-[0.3em] mt-2 text-foreground/40 font-bold">
-              Beach Club & Restaurant
-            </p>
+        <div className="p-6">
+          <div className="mb-8 flex items-center gap-3 pb-6 border-b border-border">
+            <div className="w-11 h-11 rounded-xl overflow-hidden shadow-md border border-flamingo/20 flex-shrink-0">
+              <img src="https://firebasestorage.googleapis.com/v0/b/flamingo-ea5e5.firebasestorage.app/o/flamingo.jpeg?alt=media&token=eb138c1e-a9e1-405a-9b47-de81c2588b88" alt="Flamingo" className="w-full h-full object-cover" />
+            </div>
+            <div>
+              <h1 className="text-lg font-bold tracking-widest uppercase text-primary leading-none">
+                Flamingo
+              </h1>
+              <p className="text-[9px] uppercase tracking-[0.2em] mt-0.5 text-foreground/40 font-bold">
+                Beach Club & Restaurant
+              </p>
+            </div>
           </div>
 
           <nav className="space-y-1">
@@ -91,12 +96,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       {/* Main Content */}
       <main className="flex-1 flex flex-col h-full overflow-hidden">
         {/* Desktop Header */}
-        <header className="hidden md:flex h-20 bg-card border-b border-border items-center justify-between px-10 shrink-0">
-          <div className="flex items-center space-x-8">
-            <h2 className="text-sm font-bold uppercase tracking-widest">Tableau de Bord</h2>
+        <header className="hidden md:flex h-16 bg-navy border-b border-navy/80 items-center justify-between px-10 shrink-0">
+          <div className="flex items-center space-x-6">
+            <h2 className="text-sm font-bold uppercase tracking-widest text-white">Tableau de Bord</h2>
             <div className="flex items-center space-x-2">
-              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-              <span className="text-[11px] uppercase tracking-wider opacity-60">En Direct • {new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
+              <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
+              <span className="text-[11px] uppercase tracking-wider text-white/50">{new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
             </div>
           </div>
           <div className="relative">
@@ -112,10 +117,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 size="md"
               />
               <div className="flex flex-col text-left">
-                <p className="text-xs font-bold uppercase tracking-tight">{user?.displayName || 'User'}</p>
-                <p className="text-[10px] opacity-50 uppercase tracking-tighter">{user?.email}</p>
+                <p className="text-xs font-bold uppercase tracking-tight text-white">{user?.displayName || 'User'}</p>
+                <p className="text-[10px] text-white/50 uppercase tracking-tighter">{user?.email}</p>
               </div>
-              <ChevronDown className="w-4 h-4 opacity-50" />
+              <ChevronDown className="w-4 h-4 text-white/50" />
             </button>
 
             {profileOpen && (

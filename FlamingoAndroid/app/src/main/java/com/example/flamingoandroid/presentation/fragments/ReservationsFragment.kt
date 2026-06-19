@@ -1,14 +1,16 @@
 package com.example.flamingoandroid.presentation.fragments
 
+import android.content.Context
 import android.os.Bundle
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.content.Intent
 import android.net.Uri
+import android.text.InputType
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.EditText
+import android.widget.GridLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -18,7 +20,6 @@ import androidx.core.widget.doOnTextChanged
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.example.flamingoandroid.R
-
 import com.example.flamingoandroid.data.models.Position
 import com.example.flamingoandroid.data.models.Reservation
 import com.example.flamingoandroid.databinding.FragmentReservationsBinding
@@ -27,6 +28,8 @@ import com.example.flamingoandroid.presentation.util.initials
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.snackbar.Snackbar
+import com.google.android.material.textfield.TextInputEditText
+import com.google.android.material.textfield.TextInputLayout
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import java.text.ParseException
@@ -158,8 +161,10 @@ class ReservationsFragment : Fragment() {
                 it.phone.contains(searchQuery, ignoreCase = true)
         }
 
+        val totalAdults   = filtered.sumOf { it.adults }
+        val totalChildren = filtered.sumOf { it.children }
         binding.tvReservationsStats.text =
-            "${filtered.size} réservations • ${filtered.count { it.status == "confirmed" }} confirmées • ${filtered.count { it.status == "pending" }} en attente"
+            "${filtered.size} réservations • ${filtered.count { it.status == "confirmed" }} confirmées • ${filtered.count { it.status == "pending" }} en attente • ${totalAdults}A ${totalChildren}ENF"
 
         binding.tvReservationsEmpty.visibility = if (filtered.isEmpty()) View.VISIBLE else View.GONE
         binding.reservationsContainer.removeAllViews()
@@ -289,289 +294,383 @@ class ReservationsFragment : Fragment() {
         startActivity(intent)
     }
 
+    // ── Helpers formulaire ───────────────────────────────────────────────────
+
+    private fun Int.dp(ctx: Context) = (this * ctx.resources.displayMetrics.density + 0.5f).toInt()
+
+    private fun fmTil(
+        ctx: Context,
+        hint: String,
+        inputType: Int = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS,
+        multiline: Boolean = false,
+        phoneKb: Boolean = false,
+    ): Pair<TextInputLayout, TextInputEditText> {
+        val til = TextInputLayout(ctx).apply {
+            this.hint = hint
+            boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_OUTLINE
+            setBoxCornerRadii(12f, 12f, 12f, 12f)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = 12.dp(ctx) }
+        }
+        val et = TextInputEditText(til.context).apply {
+            this.inputType = when {
+                phoneKb   -> InputType.TYPE_CLASS_PHONE
+                multiline -> InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                else      -> inputType
+            }
+            if (multiline) { minLines = 3; maxLines = 5 }
+        }
+        til.addView(et)
+        return til to et
+    }
+
+    private fun fmSection(ctx: Context, text: String): TextView = TextView(ctx).apply {
+        this.text = text
+        textSize = 10f
+        letterSpacing = 0.12f
+        setTextColor(ContextCompat.getColor(ctx, R.color.text_secondary))
+        setPadding(2.dp(ctx), 10.dp(ctx), 0, 6.dp(ctx))
+        layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+    }
+
+    private fun fmStepper(
+        ctx: Context,
+        label: String,
+        initial: Int,
+        min: Int = 0,
+        onChanged: (Int) -> Unit,
+    ): Pair<LinearLayout, () -> Int> {
+        var count = initial
+        val row = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = 10.dp(ctx) }
+        }
+        val lbl = TextView(ctx).apply {
+            text = label
+            textSize = 14f
+            setTextColor(ContextCompat.getColor(ctx, R.color.text_primary))
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                gravity = android.view.Gravity.CENTER_VERTICAL
+            }
+        }
+        val countView = TextView(ctx).apply {
+            text = count.toString()
+            textSize = 16f
+            gravity = android.view.Gravity.CENTER
+            setTextColor(ContextCompat.getColor(ctx, R.color.text_primary))
+            layoutParams = LinearLayout.LayoutParams(52.dp(ctx), LinearLayout.LayoutParams.WRAP_CONTENT)
+        }
+        val btnMinus = MaterialButton(ctx, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+            text = "−"; isAllCaps = false; setPadding(0, 0, 0, 0)
+            layoutParams = LinearLayout.LayoutParams(44.dp(ctx), 44.dp(ctx))
+            setOnClickListener {
+                if (count > min) { count--; countView.text = count.toString(); onChanged(count) }
+            }
+        }
+        val btnPlus = MaterialButton(ctx, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+            text = "+"; isAllCaps = false; setPadding(0, 0, 0, 0)
+            layoutParams = LinearLayout.LayoutParams(44.dp(ctx), 44.dp(ctx))
+            setOnClickListener { count++; countView.text = count.toString(); onChanged(count) }
+        }
+        row.addView(lbl); row.addView(btnMinus); row.addView(countView); row.addView(btnPlus)
+        return row to { count }
+    }
+
+    private fun fmPickerBtn(ctx: Context, text: String): MaterialButton =
+        MaterialButton(ctx, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+            this.text = text; isAllCaps = false
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = 10.dp(ctx) }
+        }
+
+    // ── Dialog réservation ────────────────────────────────────────────────────
+
     private fun showReservationDialog(existingReservation: Reservation? = null) {
-        val context = requireContext()
-        val container = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(24, 12, 24, 0)
-        }
+        val ctx = requireContext()
+        val pad = 20.dp(ctx)
 
-        val firstNameInput = EditText(context).apply {
-            hint = "Prénom *"
-            setText(existingReservation?.firstName.orEmpty())
-        }
-        val lastNameInput = EditText(context).apply {
-            hint = "Nom *"
-            setText(existingReservation?.lastName.orEmpty())
-        }
-        val phoneInput = EditText(context).apply {
-            hint = "Téléphone *"
-            setText(existingReservation?.phone.orEmpty())
-        }
-        val adultsInput = EditText(context).apply {
-            hint = "Adultes"
-            inputType = android.text.InputType.TYPE_CLASS_NUMBER
-            setText(existingReservation?.adults?.toString().orEmpty())
-        }
-        val childrenInput = EditText(context).apply {
-            hint = "Enfants"
-            inputType = android.text.InputType.TYPE_CLASS_NUMBER
-            setText(existingReservation?.children?.toString().orEmpty())
-        }
-        val dateButton = MaterialButton(context).apply {
-            text = "Date: ${existingReservation?.date?.takeIf { it.isNotBlank() } ?: selectedDateLabel}"
-            isAllCaps = false
-        }
-        val timeButton = MaterialButton(context).apply {
-            text = "Heure: ${existingReservation?.time?.takeIf { it.isNotBlank() } ?: "12:00"}"
-            isAllCaps = false
-        }
-        val positionTypeButton = MaterialButton(context).apply {
-            text = "Position: ${existingReservation?.positionType?.takeIf { it.isNotBlank() } ?: "choisir"}"
-            isAllCaps = false
-        }
-        val positionNumberButton = MaterialButton(context).apply {
-            text = "N° de position: ${existingReservation?.positionNumber?.takeIf { it.isNotBlank() } ?: "choisir"}"
-            isAllCaps = false
-            isEnabled = existingReservation?.positionType?.isNotBlank() == true
-        }
-        val notesInput = EditText(context).apply {
-            hint = "Notes spéciales"
-            minLines = 3
-            maxLines = 5
-            setText(existingReservation?.notes.orEmpty())
-        }
-
-        container.addView(firstNameInput)
-        container.addView(lastNameInput)
-        container.addView(phoneInput)
-        container.addView(adultsInput)
-        container.addView(childrenInput)
-        container.addView(dateButton)
-        container.addView(timeButton)
-        container.addView(positionTypeButton)
-        container.addView(positionNumberButton)
-        container.addView(notesInput)
-
-        var selectedDateIsoValue = existingReservation?.date?.takeIf { it.isNotBlank() } ?: selectedDateIso.ifBlank { isoFormatter.format(java.util.Date()) }
+        // ── État mutable ─────────────────────────────────────────────────────
+        var selectedDateIsoValue = existingReservation?.date?.takeIf { it.isNotBlank() }
+            ?: selectedDateIso.ifBlank { isoFormatter.format(java.util.Date()) }
         var selectedTimeValue = existingReservation?.time?.takeIf { it.isNotBlank() } ?: "12:00"
         var selectedPositionType = existingReservation?.positionType?.takeIf { it.isNotBlank() } ?: ""
         var selectedPositionNumber = existingReservation?.positionNumber?.takeIf { it.isNotBlank() } ?: ""
+        var adultsCount = existingReservation?.adults?.takeIf { it > 0 } ?: 1
+        var childrenCount = existingReservation?.children ?: 0
 
-        fun refreshPositionNumberButton() {
-            val available = availablePositionNumbers(selectedDateIsoValue, selectedPositionType, existingReservation?.id)
-            positionNumberButton.isEnabled = selectedPositionType.isNotBlank() && (available.isNotEmpty() || selectedPositionNumber.isNotBlank())
-            positionNumberButton.text = when {
-                selectedPositionNumber.isNotBlank() -> "N° de position: $selectedPositionNumber"
-                selectedPositionType.isBlank() -> "N° de position: choisir d'abord la position"
-                available.isEmpty() -> "Liste d'attente (aucune position)"
-                else -> "N° de position: choisir"
-            }
+        // ── Champs texte ──────────────────────────────────────────────────────
+        val (tilFirstName, etFirstName) = fmTil(ctx, "Prénom *")
+        etFirstName.setText(existingReservation?.firstName.orEmpty())
+
+        val (tilLastName, etLastName) = fmTil(ctx, "Nom *")
+        etLastName.setText(existingReservation?.lastName.orEmpty())
+
+        val (tilPhone, etPhone) = fmTil(ctx, "Téléphone *", phoneKb = true)
+        etPhone.setText(existingReservation?.phone.orEmpty())
+
+        val (_, etNotes) = fmTil(ctx, "Notes / demandes spéciales", multiline = true)
+        etNotes.setText(existingReservation?.notes.orEmpty())
+
+        // ── Boutons date & heure ──────────────────────────────────────────────
+        fun dateLabel() = try {
+            "📅  ${displayFormatter.format(isoFormatter.parse(selectedDateIsoValue)!!)}"
+        } catch (_: Exception) { "📅  Choisir la date" }
+
+        val dateBtn = fmPickerBtn(ctx, dateLabel())
+        val timeBtn = fmPickerBtn(ctx, "🕐  $selectedTimeValue")
+
+        val dateTimeRow = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = 4.dp(ctx) }
+        }
+        dateBtn.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            .apply { marginEnd = 8.dp(ctx) }
+        timeBtn.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        dateTimeRow.addView(dateBtn); dateTimeRow.addView(timeBtn)
+
+        // ── Compteurs adultes / enfants ───────────────────────────────────────
+        val (adultsRow, getAdults)   = fmStepper(ctx, "Adultes", adultsCount, min = 1) { adultsCount = it }
+        val (childrenRow, getChildren) = fmStepper(ctx, "Enfants", childrenCount, min = 0) { childrenCount = it }
+
+        // ── Sélecteur type de position (grille 2 col) ─────────────────────────
+        val posTypeButtons = mutableMapOf<String, MaterialButton>()
+        val posTypeGrid = GridLayout(ctx).apply {
+            columnCount = 2
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = 8.dp(ctx) }
         }
 
         fun getPositionTypes(): List<String> {
             val types = availablePositions.map { it.type }.filter { it.isNotBlank() }
-            return if (types.isNotEmpty()) types else defaultPositionTypes
+            return types.ifEmpty { defaultPositionTypes }
         }
 
-        fun showPositionNumberPicker() {
-            val count = availablePositions.firstOrNull { it.type == selectedPositionType }?.count ?: 0
+        fun refreshPosTypeGrid() {
+            posTypeButtons.forEach { (cat, btn) -> btn.isChecked = (cat == selectedPositionType) }
+        }
+
+        // Grille N° de position (inline, reconstruite à chaque changement de type)
+        val posNumContainer = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = 8.dp(ctx) }
+        }
+        val posNumSectionLabel = fmSection(ctx, "N° DE POSITION")
+        posNumSectionLabel.visibility = View.GONE
+        posNumContainer.addView(posNumSectionLabel)
+
+        fun rebuildPosNumGrid() {
+            // Remove everything except the section label (index 0)
+            while (posNumContainer.childCount > 1) posNumContainer.removeViewAt(1)
+            if (selectedPositionType.isBlank()) { posNumSectionLabel.visibility = View.GONE; return }
+            posNumSectionLabel.visibility = View.VISIBLE
+
+            val count    = availablePositions.firstOrNull { it.type == selectedPositionType }?.count ?: 0
             val occupied = occupiedPositionNumbers(selectedDateIsoValue, selectedPositionType, existingReservation?.id)
-            if (count <= 0) {
-                Snackbar.make(binding.root, "Aucune position disponible pour ce type", Snackbar.LENGTH_SHORT).show()
-                return
+            if (count == 0) return
+
+            val grid = GridLayout(ctx).apply {
+                columnCount = 5
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+                )
             }
 
-            var pickerDialog: AlertDialog? = null
-            val scrollView = ScrollView(context)
-            val list = LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(24, 8, 24, 8)
-            }
+            (1..count).forEach { n ->
+                val numStr   = n.toString()
+                val occupied2 = occupied.contains(numStr)
+                val isSelected = (numStr == selectedPositionNumber)
 
-            val summary = TextView(context).apply {
-                text = if (occupied.isEmpty()) {
-                    "Toutes les positions sont disponibles."
-                } else {
-                    "Positions occupées: ${occupied.sorted().joinToString(", ") { "N° $it" }}"
-                }
-                setTextColor(ContextCompat.getColor(context, android.R.color.darker_gray))
-                textSize = 12f
-            }
-            list.addView(summary)
-
-            (1..count).forEach { number ->
-                val numberString = number.toString()
-                val isOccupied = occupied.contains(numberString)
-                val button = MaterialButton(context).apply {
-                    text = if (isOccupied) "N° $number - occupé" else "N° $number"
-                    isAllCaps = false
-                    layoutParams = LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                    ).apply {
-                        topMargin = 12
+                val btn = MaterialButton(ctx, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+                    text = numStr; isAllCaps = false; isCheckable = true; isChecked = isSelected
+                    if (occupied2) { isEnabled = false; alpha = 0.35f }
+                    val glp = GridLayout.LayoutParams().apply {
+                        width = 0
+                        columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
+                        setMargins(3.dp(ctx), 3.dp(ctx), 3.dp(ctx), 3.dp(ctx))
                     }
-                    if (isOccupied) {
-                        isEnabled = false
-                        setBackgroundColor(android.graphics.Color.parseColor("#263238"))
-                        setTextColor(android.graphics.Color.WHITE)
-                    } else {
-                        setBackgroundColor(ContextCompat.getColor(context, R.color.ocean_light))
-                        setTextColor(ContextCompat.getColor(context, R.color.ocean_dark))
+                    layoutParams = glp
+                    if (!occupied2) {
                         setOnClickListener {
-                            selectedPositionNumber = numberString
-                            refreshPositionNumberButton()
-                            pickerDialog?.dismiss()
+                            selectedPositionNumber = if (selectedPositionNumber == numStr) "" else numStr
+                            rebuildPosNumGrid()
                         }
                     }
                 }
-                list.addView(button)
+                grid.addView(btn)
             }
+            posNumContainer.addView(grid)
 
-            scrollView.addView(list)
-            pickerDialog = MaterialAlertDialogBuilder(context)
-                .setTitle("Choisir le numéro")
-                .setView(scrollView)
-                .setNegativeButton("Fermer", null)
-                .create()
-            pickerDialog.show()
-        }
-
-        dateButton.setOnClickListener {
-            val calendar = Calendar.getInstance()
-            try {
-                isoFormatter.parse(selectedDateIsoValue)?.let { calendar.time = it }
-            } catch (_: ParseException) {
-                calendar.time = java.util.Date()
-            }
-            DatePickerDialog(
-                context,
-                { _, year, month, dayOfMonth ->
-                    calendar.set(year, month, dayOfMonth)
-                    calendar.set(Calendar.HOUR_OF_DAY, 0)
-                    calendar.set(Calendar.MINUTE, 0)
-                    calendar.set(Calendar.SECOND, 0)
-                    calendar.set(Calendar.MILLISECOND, 0)
-                    selectedDateIsoValue = isoFormatter.format(calendar.time)
-                    selectedDateLabel = displayFormatter.format(calendar.time)
-                    dateButton.text = "Date: $selectedDateLabel"
-                    refreshPositionNumberButton()
-                },
-                calendar.get(Calendar.YEAR),
-                calendar.get(Calendar.MONTH),
-                calendar.get(Calendar.DAY_OF_MONTH)
-            ).apply {
-                datePicker.minDate = System.currentTimeMillis() - 1000
-                show()
+            if (occupied.isNotEmpty()) {
+                posNumContainer.addView(TextView(ctx).apply {
+                    text = "● Grisé = occupé ce jour"
+                    textSize = 10f
+                    setTextColor(ContextCompat.getColor(ctx, R.color.text_secondary))
+                    setPadding(4.dp(ctx), 4.dp(ctx), 0, 0)
+                })
             }
         }
 
-        timeButton.setOnClickListener {
-            val now = Calendar.getInstance()
-            val initialHour = selectedTimeValue.substringBefore(":").toIntOrNull() ?: now.get(Calendar.HOUR_OF_DAY)
-            val initialMinute = selectedTimeValue.substringAfter(":").toIntOrNull() ?: now.get(Calendar.MINUTE)
-            TimePickerDialog(
-                context,
-                { _, hourOfDay, minute ->
-                    selectedTimeValue = String.format(Locale.getDefault(), "%02d:%02d", hourOfDay, minute)
-                    timeButton.text = "Heure: $selectedTimeValue"
-                },
-                initialHour,
-                initialMinute,
-                true
-            ).show()
-        }
-
-        positionTypeButton.setOnClickListener {
-            val types = getPositionTypes()
-            MaterialAlertDialogBuilder(context)
-                .setTitle("Choisir la position")
-                .setItems(types.toTypedArray()) { _, which ->
-                    selectedPositionType = types[which]
-                    selectedPositionNumber = ""
-                    positionTypeButton.text = "Position: $selectedPositionType"
-                    refreshPositionNumberButton()
+        getPositionTypes().forEach { type ->
+            val btn = MaterialButton(ctx, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+                text = type; isAllCaps = false; isCheckable = true
+                val glp = GridLayout.LayoutParams().apply {
+                    width = 0
+                    columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
+                    setMargins(4.dp(ctx), 4.dp(ctx), 4.dp(ctx), 4.dp(ctx))
                 }
-                .show()
+                layoutParams = glp
+                setOnClickListener {
+                    selectedPositionType = type
+                    selectedPositionNumber = ""
+                    refreshPosTypeGrid()
+                    rebuildPosNumGrid()
+                }
+            }
+            posTypeButtons[type] = btn
+            posTypeGrid.addView(btn)
+        }
+        refreshPosTypeGrid()
+        rebuildPosNumGrid()
+
+        // ── Boutons date & heure (actions) ────────────────────────────────────
+        dateBtn.setOnClickListener {
+            val cal = Calendar.getInstance()
+            try { isoFormatter.parse(selectedDateIsoValue)?.let { cal.time = it } } catch (_: ParseException) {}
+            DatePickerDialog(ctx, { _, y, m, d ->
+                cal.set(y, m, d, 0, 0, 0)
+                selectedDateIsoValue = isoFormatter.format(cal.time)
+                dateBtn.text = dateLabel()
+                rebuildPosNumGrid()
+            }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH))
+                .apply { datePicker.minDate = System.currentTimeMillis() - 1000; show() }
         }
 
-        positionNumberButton.setOnClickListener {
-            showPositionNumberPicker()
+        timeBtn.setOnClickListener {
+            val h = selectedTimeValue.substringBefore(":").toIntOrNull() ?: 12
+            val m = selectedTimeValue.substringAfter(":").toIntOrNull() ?: 0
+            TimePickerDialog(ctx, { _, hr, mn ->
+                selectedTimeValue = String.format(Locale.getDefault(), "%02d:%02d", hr, mn)
+                timeBtn.text = "🕐  $selectedTimeValue"
+            }, h, m, true).show()
         }
 
-        val dialog = MaterialAlertDialogBuilder(context)
-            .setTitle(if (existingReservation == null) "Nouvelle Réservation" else "Modifier la Réservation")
-            .setView(container)
+        // ── Assemblage ────────────────────────────────────────────────────────
+        val inner = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, pad / 2, pad, pad / 2)
+        }
+        inner.addView(fmSection(ctx, "INFORMATIONS CLIENT"))
+        inner.addView(tilFirstName)
+        inner.addView(tilLastName)
+        inner.addView(tilPhone)
+        inner.addView(fmSection(ctx, "DATE & HEURE"))
+        inner.addView(dateTimeRow)
+        inner.addView(fmSection(ctx, "INVITÉS"))
+        inner.addView(adultsRow)
+        inner.addView(childrenRow)
+        inner.addView(fmSection(ctx, "TYPE DE POSITION *"))
+        inner.addView(posTypeGrid)
+        inner.addView(posNumContainer)
+        inner.addView(fmSection(ctx, "NOTES (optionnel)"))
+        val (tilNotesFull, etNotesFull) = fmTil(ctx, "Demandes spéciales…", multiline = true)
+        etNotesFull.setText(existingReservation?.notes.orEmpty())
+        inner.addView(tilNotesFull)
+
+        val scrollView = ScrollView(ctx).apply { addView(inner) }
+
+        // ── Dialog ────────────────────────────────────────────────────────────
+        val dialog = MaterialAlertDialogBuilder(ctx)
+            .setTitle(if (existingReservation == null) "Nouvelle réservation" else "Modifier la réservation")
+            .setView(scrollView)
             .setPositiveButton(if (existingReservation == null) "Confirmer" else "Enregistrer", null)
             .setNegativeButton("Annuler", null)
             .create()
 
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val firstName = firstNameInput.text.toString().trim()
-                val lastName = lastNameInput.text.toString().trim()
-                val phone = phoneInput.text.toString().trim()
-                val adults = adultsInput.text.toString().toIntOrNull()
-                val children = childrenInput.text.toString().toIntOrNull() ?: 0
-                val notes = notesInput.text.toString().trim().ifBlank { null }
-                val availableNumbers = availablePositionNumbers(selectedDateIsoValue, selectedPositionType, existingReservation?.id)
+                val firstName    = etFirstName.text?.toString()?.trim().orEmpty()
+                val lastName     = etLastName.text?.toString()?.trim().orEmpty()
+                val phone        = etPhone.text?.toString()?.trim().orEmpty()
+                val adults       = getAdults()
+                val children     = getChildren()
+                val notes        = etNotesFull.text?.toString()?.trim()?.ifBlank { null }
+                val availableNums = availablePositionNumbers(selectedDateIsoValue, selectedPositionType, existingReservation?.id)
+
+                // Inline errors on TIL
+                tilFirstName.error = if (firstName.isBlank()) "Obligatoire" else null
+                tilLastName.error  = if (lastName.isBlank())  "Obligatoire" else null
+                tilPhone.error     = when {
+                    phone.isBlank()                    -> "Obligatoire"
+                    !isValidPhoneNumber(phone)         -> "Numéro invalide (TN / FR / IT)"
+                    else                               -> null
+                }
 
                 val errors = mutableListOf<String>()
-                if (firstName.isBlank()) errors.add("prénom")
-                if (lastName.isBlank()) errors.add("nom")
-                if (phone.isBlank()) errors.add("téléphone")
-                if (adults == null || adults <= 0) errors.add("nombre d'adultes")
-                if (selectedPositionType.isBlank()) errors.add("position")
-                if (isPastDate(selectedDateIsoValue)) errors.add("date passée")
-                if (phone.isNotBlank() && !isValidPhoneNumber(phone)) errors.add("numéro de téléphone valide")
-                if (availableNumbers.isNotEmpty() && selectedPositionNumber.isBlank()) errors.add("numéro de position")
-                if (selectedPositionNumber.isNotBlank() && !availableNumbers.contains(selectedPositionNumber)) errors.add("position déjà occupée")
+                if (firstName.isBlank())                               errors.add("prénom")
+                if (lastName.isBlank())                                errors.add("nom")
+                if (phone.isBlank() || !isValidPhoneNumber(phone))     errors.add("téléphone")
+                if (adults <= 0)                                        errors.add("au moins 1 adulte")
+                if (selectedPositionType.isBlank())                    errors.add("type de position")
+                if (isPastDate(selectedDateIsoValue))                  errors.add("date passée")
+                if (availableNums.isNotEmpty() && selectedPositionNumber.isBlank()) errors.add("N° de position")
+                if (selectedPositionNumber.isNotBlank() && !availableNums.contains(selectedPositionNumber))
+                    errors.add("position déjà occupée")
 
                 if (errors.isNotEmpty()) {
-                    Snackbar.make(binding.root, "Merci de vérifier: ${errors.joinToString(", ")}", Snackbar.LENGTH_LONG).show()
+                    Snackbar.make(binding.root, "Vérifier : ${errors.joinToString(" · ")}", Snackbar.LENGTH_LONG).show()
                     return@setOnClickListener
                 }
 
                 val reservation = Reservation(
-                    firstName = firstName,
-                    lastName = lastName,
-                    phone = phone,
-                    adults = adults ?: 0,
-                    children = children,
-                    date = selectedDateIsoValue,
-                    time = selectedTimeValue,
-                    positionType = selectedPositionType,
+                    firstName      = firstName,
+                    lastName       = lastName,
+                    phone          = phone,
+                    adults         = adults,
+                    children       = children,
+                    date           = selectedDateIsoValue,
+                    time           = selectedTimeValue,
+                    positionType   = selectedPositionType,
                     positionNumber = selectedPositionNumber.ifBlank { null },
-                    status = existingReservation?.status ?: "pending",
-                    notes = notes,
-                    createdAt = existingReservation?.createdAt,
-                    updatedAt = existingReservation?.updatedAt
+                    status         = existingReservation?.status ?: "pending",
+                    notes          = notes,
+                    createdAt      = existingReservation?.createdAt,
+                    updatedAt      = existingReservation?.updatedAt
                 )
 
                 if (existingReservation == null) {
                     viewModel.addReservation(reservation) { result ->
                         result.onSuccess {
-                            Snackbar.make(binding.root, "Réservation ajoutée", Snackbar.LENGTH_SHORT).show()
+                            Snackbar.make(binding.root, "✅ Réservation ajoutée", Snackbar.LENGTH_SHORT).show()
                             dialog.dismiss()
-                        }.onFailure { error ->
-                            Snackbar.make(binding.root, error.message ?: "Erreur lors de l'enregistrement", Snackbar.LENGTH_LONG).show()
+                        }.onFailure { err ->
+                            Snackbar.make(binding.root, err.message ?: "Erreur", Snackbar.LENGTH_LONG).show()
                         }
                     }
                 } else {
                     viewModel.updateReservation(existingReservation.id, reservation) { result ->
                         result.onSuccess {
-                            Snackbar.make(binding.root, "Réservation modifiée", Snackbar.LENGTH_SHORT).show()
+                            Snackbar.make(binding.root, "✅ Réservation modifiée", Snackbar.LENGTH_SHORT).show()
                             dialog.dismiss()
-                        }.onFailure { error ->
-                            Snackbar.make(binding.root, error.message ?: "Erreur lors de l'enregistrement", Snackbar.LENGTH_LONG).show()
+                        }.onFailure { err ->
+                            Snackbar.make(binding.root, err.message ?: "Erreur", Snackbar.LENGTH_LONG).show()
                         }
                     }
                 }
             }
         }
 
-        refreshPositionNumberButton()
         dialog.show()
     }
 

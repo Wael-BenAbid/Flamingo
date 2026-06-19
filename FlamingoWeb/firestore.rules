@@ -11,14 +11,17 @@
       function isEmailVerified() { return request.auth.token.email_verified == true; }
       
       // Auth tokens do not contain custom claims. We lookup roles.
-      function isAdmin() { 
-        return isSignedIn() && (
-          request.auth.token.email == 'waelbenabid1@gmail.com' ||
-          request.auth.token.email == 'abidos.games@gmail.com' ||
-          request.auth.token.role == 'admin' ||
-          exists(/databases/$(database)/documents/admins/$(request.auth.uid))
-        );
-      }
+       function isAdmin() {
+      return isSignedIn() && (
+        // Admins permanents — ajouter les emails ici si besoin
+        request.auth.token.email == 'waelbenabid1@gmail.com' ||
+        request.auth.token.email == 'abidos.games@gmail.com' ||
+        request.auth.token.email == 'admin@gmail.com' ||
+        // Admins dynamiques — ajouter via collection Firestore "admins/{uid}"
+        request.auth.token.role == 'admin' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
 
       function ownWorkerDocHasRole(role) {
         return isSignedIn() &&

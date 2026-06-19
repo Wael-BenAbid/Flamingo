@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { format, startOfToday } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { Timestamp, where } from 'firebase/firestore';
 import { jsPDF } from 'jspdf';
 import * as XLSX from 'xlsx';
 import { useFirestore } from '../hooks/useFirestore';
@@ -75,6 +76,20 @@ interface AdvanceRecord {
   date: string;
 }
 
+interface TableOrder {
+  id: string;
+  table_number: string;
+  status?: string;
+  items: Array<{ name: string; quantity: number; unit_price: number; }>;
+  total_price: number;
+  grandTotal?: number;
+  discountPercent?: number;
+  clientName?: string;
+  server_name?: string;
+  source?: string;
+  created_at?: any;
+}
+
 export default function Reports() {
   const { subscribe } = useFirestore();
   const [date, setDate] = useState<Date>(startOfToday());
@@ -84,6 +99,7 @@ export default function Reports() {
   const [sales, setSales] = useState<SaleRecord[]>([]);
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [advances, setAdvances] = useState<AdvanceRecord[]>([]);
+  const [tableOrders, setTableOrders] = useState<TableOrder[]>([]);
 
   useEffect(() => {
     const unsubReservations = subscribe<Reservation>('reservations', (data) => setReservations(data));
@@ -92,6 +108,7 @@ export default function Reports() {
     const unsubSales        = subscribe<SaleRecord>('sales', (data) => setSales(data));
     const unsubPayments     = subscribe<PaymentRecord>('payments', (data) => setPayments(data));
     const unsubAdvances     = subscribe<AdvanceRecord>('advances', (data) => setAdvances(data));
+    // table_orders est géré dans un useEffect séparé (dépend de `date`).
 
     return () => {
       unsubReservations();
@@ -104,6 +121,26 @@ export default function Reports() {
   // subscribe is a stable module-level reference — intentionally omitted from deps
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Subscription séparée pour table_orders : filtrée par la date choisie dans le picker.
+  // Se ré-abonne automatiquement quand la date change — évite de charger tout l'historique.
+  useEffect(() => {
+    const start = new Date(date);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(date);
+    end.setHours(23, 59, 59, 999);
+
+    const unsub = subscribe<TableOrder>(
+      'table_orders',
+      (data) => setTableOrders(data || []),
+      [
+        where('created_at', '>=', Timestamp.fromDate(start)),
+        where('created_at', '<=', Timestamp.fromDate(end)),
+      ],
+    );
+    return () => unsub();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date]);
 
   const selectedDate = format(date, 'yyyy-MM-dd');
 
@@ -139,9 +176,19 @@ export default function Reports() {
     const totalExpenses = workerAdvances + workerPayments + productCost;
     const netProfit = totalRevenue - totalExpenses;
 
+    const dayTableOrders = tableOrders.filter((o) => {
+      if (!o.created_at || o.status === 'cancelled') return false;
+      try {
+        const d = typeof o.created_at.toDate === 'function' ? o.created_at.toDate() : new Date(o.created_at);
+        return format(d, 'yyyy-MM-dd') === selectedDate;
+      } catch { return false; }
+    });
+
     return {
       dayReservations,
       dayConfirmedReservations,
+      daySales,
+      dayTableOrders,
       totalClients,
       totalArrivals,
       reservationRevenue,
@@ -158,33 +205,106 @@ export default function Reports() {
         return sum + ((item.buyPrice || 0) * quantity);
       }, 0),
     };
-  }, [reservations, positions, inventory, sales, payments, advances, selectedDate]);
+  }, [reservations, positions, inventory, sales, payments, advances, tableOrders, selectedDate]);
 
   const exportExcel = () => {
-    const rows = [
+    const wb = XLSX.utils.book_new();
+
+    // ── Feuille 1 : Résumé ────────────────────────────────────────────
+    const summaryRows: (string | number)[][] = [
+      ['Bilan journalier — Flamingo'],
       ['Date', format(date, 'dd/MM/yyyy', { locale: fr })],
-      ['Revenus totaux', report.totalRevenue],
-      ['Dépenses totales', report.totalExpenses],
-      ['Bénéfice net', report.netProfit],
+      [],
+      ['── REVENUS ──'],
+      ['Revenus totaux (DT)', report.totalRevenue],
+      ['Revenus réservations (DT)', report.reservationRevenue],
+      ['Ventes produits (DT)', report.productSalesRevenue],
+      [],
+      ['── DÉPENSES ──'],
+      ['Dépenses totales (DT)', report.totalExpenses],
+      ['Coût produits vendus (DT)', report.productCost],
+      ['Avances travailleurs (DT)', report.workerAdvances],
+      ['Paiements travailleurs (DT)', report.workerPayments],
+      [],
+      ['── RÉSULTAT ──'],
+      ['Bénéfice net (DT)', report.netProfit],
+      [],
+      ['── ACTIVITÉ ──'],
       ['Réservations confirmées', report.dayConfirmedReservations.length],
       ['Clients total', report.totalClients],
       ['Arrivées', report.totalArrivals],
-      ['Ventes produits', report.productSalesRevenue],
-      ['Avances travailleurs', report.workerAdvances],
-      ['Paiements travailleurs', report.workerPayments],
-      ['Consommation stock (unités)', report.totalProductUnitsSold],
-      ['Revenus réservations', report.reservationRevenue],
-      ['Coût produits vendus', report.productCost],
-      ['Valeur stock', report.stockValue],
+      ['Commandes tables', report.dayTableOrders.length],
+      ['Ventes (unités)', report.totalProductUnitsSold],
+      ['Valeur stock (DT)', report.stockValue],
     ];
+    const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
+    XLSX.utils.book_append_sheet(wb, wsSummary, 'Résumé');
 
-    const worksheet = XLSX.utils.aoa_to_sheet([
-      ['Bilan journalier'],
-      ...rows,
+    // ── Feuille 2 : Réservations ──────────────────────────────────────
+    const resHeaders = ['Nom', 'Zone', 'N° Position', 'Adultes', 'Enfants', 'Statut', 'Montant (DT)'];
+    const resRows = report.dayReservations.map((r) => [
+      `${r.firstName || ''} ${r.lastName || ''}`.trim(),
+      (r as any).positionType || '',
+      (r as any).positionNumber || '',
+      r.adults || 0,
+      r.children || 0,
+      r.status || '',
+      r.totalPrice ?? 0,
     ]);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Bilan');
-    const buffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+    const wsRes = XLSX.utils.aoa_to_sheet([resHeaders, ...resRows]);
+    XLSX.utils.book_append_sheet(wb, wsRes, 'Réservations');
+
+    // ── Feuille 3 : Commandes & Factures ─────────────────────────────
+    const ordHeaders = ['Table', 'Client', 'Article', 'Quantité', 'Prix unitaire (DT)', 'Total ligne (DT)', 'Remise %', 'Total facture (DT)', 'Statut', 'Source'];
+    const ordRows: (string | number)[][] = [];
+    report.dayTableOrders.forEach((order) => {
+      const items = order.items || [];
+      const facture = order.grandTotal ?? order.total_price ?? 0;
+      const discount = order.discountPercent ?? 0;
+      if (items.length === 0) {
+        ordRows.push([
+          order.table_number, order.clientName || order.server_name || '—',
+          '(aucun article)', 0, 0, 0, discount, facture, order.status || '', order.source || 'table',
+        ]);
+      } else {
+        items.forEach((item, idx) => {
+          ordRows.push([
+            order.table_number,
+            order.clientName || order.server_name || '—',
+            item.name,
+            item.quantity,
+            item.unit_price,
+            item.unit_price * item.quantity,
+            idx === 0 ? discount : '',
+            idx === 0 ? facture : '',
+            order.status || '',
+            order.source || 'table',
+          ]);
+        });
+      }
+    });
+    // Fallback : si aucune commande, on liste les ventes
+    if (ordRows.length === 0) {
+      const saleHeaders = ['Produit', 'Quantité', 'Prix unitaire (DT)', 'Total (DT)', 'Date'];
+      const saleRows = report.daySales.map((s) => [
+        s.productName, s.quantity, s.unitSellPrice, s.totalPrice, s.date,
+      ]);
+      const wsSales = XLSX.utils.aoa_to_sheet([saleHeaders, ...saleRows]);
+      XLSX.utils.book_append_sheet(wb, wsSales, 'Ventes');
+    } else {
+      const wsOrd = XLSX.utils.aoa_to_sheet([ordHeaders, ...ordRows]);
+      XLSX.utils.book_append_sheet(wb, wsOrd, 'Commandes & Factures');
+
+      // Feuille 4 : Ventes détail si des ventes existent
+      if (report.daySales.length > 0) {
+        const saleHeaders = ['Produit', 'Quantité', 'Prix unitaire (DT)', 'Total (DT)'];
+        const saleRows = report.daySales.map((s) => [s.productName, s.quantity, s.unitSellPrice, s.totalPrice]);
+        const wsSales = XLSX.utils.aoa_to_sheet([saleHeaders, ...saleRows]);
+        XLSX.utils.book_append_sheet(wb, wsSales, 'Ventes détail');
+      }
+    }
+
+    const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -196,28 +316,84 @@ export default function Reports() {
 
   const exportPdf = () => {
     const doc = new jsPDF();
-    const lines = [
-      'Bilan journalier',
-      `Date: ${format(date, 'dd/MM/yyyy', { locale: fr })}`,
-      `Revenus totaux: ${report.totalRevenue.toFixed(0)} DT`,
-      `Dépenses totales: ${report.totalExpenses.toFixed(0)} DT`,
-      `Bénéfice net: ${report.netProfit.toFixed(0)} DT`,
-      `Réservations confirmées: ${report.dayConfirmedReservations.length}`,
-      `Clients total: ${report.totalClients}`,
-      `Arrivées: ${report.totalArrivals}`,
-      `Ventes produits: ${report.productSalesRevenue.toFixed(0)} DT`,
-      `Avances travailleurs: ${report.workerAdvances.toFixed(0)} DT`,
-      `Paiements travailleurs: ${report.workerPayments.toFixed(0)} DT`,
-      `Consommation stock: ${report.totalProductUnitsSold} unités`,
-      `Revenus réservations: ${report.reservationRevenue.toFixed(0)} DT`,
-      `Coût produits vendus: ${report.productCost.toFixed(0)} DT`,
-      `Valeur stock: ${report.stockValue.toFixed(0)} DT`,
-    ];
+    const pageW = doc.internal.pageSize.getWidth();
+    let y = 14;
 
-    doc.setFontSize(18);
-    doc.text(lines[0], 14, 18);
-    doc.setFontSize(11);
-    lines.slice(1).forEach((line, index) => doc.text(line, 14, 32 + index * 8));
+    const addLine = (text: string, size = 11, bold = false) => {
+      if (y > 270) { doc.addPage(); y = 14; }
+      doc.setFontSize(size);
+      doc.setFont('helvetica', bold ? 'bold' : 'normal');
+      doc.text(text, 14, y);
+      y += size * 0.5 + 2;
+    };
+
+    const addSeparator = () => { y += 2; doc.setDrawColor(180); doc.line(14, y, pageW - 14, y); y += 4; };
+
+    // ── En-tête ──────────────────────────────────────────────────────
+    addLine('FLAMINGO — BILAN JOURNALIER', 16, true);
+    addLine(`Date : ${format(date, 'dd MMMM yyyy', { locale: fr })}`, 11);
+    addSeparator();
+
+    // ── Résumé financier ─────────────────────────────────────────────
+    addLine('RÉSUMÉ FINANCIER', 13, true);
+    y += 2;
+    addLine(`Revenus totaux          : ${report.totalRevenue.toFixed(2)} DT`);
+    addLine(`  — Réservations         : ${report.reservationRevenue.toFixed(2)} DT`);
+    addLine(`  — Ventes produits      : ${report.productSalesRevenue.toFixed(2)} DT`);
+    addLine(`Dépenses totales        : ${report.totalExpenses.toFixed(2)} DT`);
+    addLine(`  — Coût produits        : ${report.productCost.toFixed(2)} DT`);
+    addLine(`  — Avances travailleurs : ${report.workerAdvances.toFixed(2)} DT`);
+    addLine(`  — Paiements            : ${report.workerPayments.toFixed(2)} DT`);
+    addLine(`Bénéfice net            : ${report.netProfit.toFixed(2)} DT`, 12, true);
+    addSeparator();
+
+    // ── Réservations ─────────────────────────────────────────────────
+    addLine(`RÉSERVATIONS DU JOUR (${report.dayConfirmedReservations.length} confirmées / ${report.dayReservations.length} total)`, 13, true);
+    y += 2;
+    if (report.dayReservations.length === 0) {
+      addLine('Aucune réservation.');
+    } else {
+      report.dayReservations.forEach((r, i) => {
+        const name = `${r.firstName || ''} ${r.lastName || ''}`.trim() || '—';
+        const zone = (r as any).positionType || '';
+        const num  = (r as any).positionNumber ? ` N°${(r as any).positionNumber}` : '';
+        const amt  = typeof r.totalPrice === 'number' ? `${r.totalPrice.toFixed(2)} DT` : '—';
+        addLine(`${i + 1}. ${name} — ${zone}${num} — ${r.adults}A/${r.children}ENF — ${r.status} — ${amt}`);
+      });
+    }
+    addSeparator();
+
+    // ── Commandes & Factures ─────────────────────────────────────────
+    addLine(`COMMANDES & FACTURES (${report.dayTableOrders.length} tables)`, 13, true);
+    y += 2;
+    if (report.dayTableOrders.length === 0) {
+      addLine('Aucune commande enregistrée.');
+    } else {
+      report.dayTableOrders.forEach((order, i) => {
+        const facture  = (order.grandTotal ?? order.total_price ?? 0).toFixed(2);
+        const client   = order.clientName?.trim() || '—';
+        const server   = order.server_name?.trim() || '—';
+        const discount = order.discountPercent ? ` | Remise ${order.discountPercent}%` : '';
+        addLine(`${i + 1}. Table ${order.table_number}${discount} — TOTAL : ${facture} DT`, 11, true);
+        if (order.server_name) addLine(`   Serveur : ${server}    Client : ${client}`);
+        (order.items || []).forEach((item) => {
+          addLine(`    • ${item.quantity}× ${item.name}  @  ${item.unit_price.toFixed(2)} DT  =  ${(item.quantity * item.unit_price).toFixed(2)} DT`);
+        });
+        y += 1;
+      });
+    }
+    addSeparator();
+
+    // ── Ventes produits ───────────────────────────────────────────────
+    if (report.daySales.length > 0) {
+      addLine(`VENTES PRODUITS (${report.daySales.length} articles)`, 13, true);
+      y += 2;
+      report.daySales.forEach((s, i) => {
+        addLine(`${i + 1}. ${s.productName}  ×${s.quantity}  @  ${s.unitSellPrice.toFixed(2)} DT  =  ${s.totalPrice.toFixed(2)} DT`);
+      });
+      addSeparator();
+    }
+
     doc.save(`bilan-journalier-${selectedDate}.pdf`);
   };
 

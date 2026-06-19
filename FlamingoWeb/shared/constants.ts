@@ -56,9 +56,9 @@ export type StaffFeature =
 export const STAFF_FEATURE_ACCESS: Record<StaffRole, StaffFeature[]> = {
   admin:       ['dashboard', 'reservations', 'arrivals', 'workers', 'stock', 'reports', 'settings', 'menuTables', 'kitchenOrders', 'placeOrder', 'payment'],
   responsable: ['dashboard', 'reservations', 'arrivals', 'workers', 'stock', 'settings', 'menuTables', 'kitchenOrders', 'placeOrder', 'payment'],
-  cuisinier:   ['arrivals', 'stock', 'kitchenOrders'],
-  barman:      ['arrivals', 'stock', 'kitchenOrders'],
-  serveur:     ['arrivals', 'placeOrder', 'workers', 'menuTables'],
+  cuisinier:   ['kitchenOrders'],
+  barman:      ['kitchenOrders'],
+  serveur:     ['placeOrder'],
   none:        [],
 };
 
@@ -66,8 +66,8 @@ export const STAFF_FEATURE_ACCESS: Record<StaffRole, StaffFeature[]> = {
 export const STOCK_CATEGORY_ACCESS: Record<StaffRole, string[] | 'all'> = {
   admin:       'all',
   responsable: 'all',
-  cuisinier:   ['nourriture', 'produit nettoyage', 'autre'],
-  barman:      ['boisson', 'glace'],
+  cuisinier:   [],
+  barman:      [],
   serveur:     [],
   none:        [],
 };
@@ -105,7 +105,8 @@ export const ATTENDANCE_STATUS = {
 // Admin emails
 export const ADMIN_EMAILS = [
   'waelbenabid1@gmail.com',
-  'abidos.games@gmail.com'
+  'abidos.games@gmail.com',
+  'admin@gmail.com',
 ] as const;
 
 /**

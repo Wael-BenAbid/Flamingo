@@ -119,32 +119,54 @@ class ReportRepository(
         try {
             val date = today()
 
-            val totalWorkersDeferred    = async { db.collection("workers").get().await().size() }
-            val reservationsDeferred    = async { reservationRepo.getReservationsByDate(date) }
-            val lowStockCountDeferred   = async { inventoryRepo.getLowStockItems().size }
+            val workersSnapDeferred   = async { db.collection("workers").get().await() }
+            val reservationsDeferred  = async { reservationRepo.getReservationsByDate(date) }
+            val lowStockCountDeferred = async { inventoryRepo.getLowStockItems().size }
+            val tableOrdersDeferred   = async {
+                val todayStart = java.util.Calendar.getInstance().apply {
+                    set(java.util.Calendar.HOUR_OF_DAY, 0)
+                    set(java.util.Calendar.MINUTE, 0)
+                    set(java.util.Calendar.SECOND, 0)
+                    set(java.util.Calendar.MILLISECOND, 0)
+                }
+                db.collection("table_orders")
+                    .whereGreaterThanOrEqualTo("created_at", com.google.firebase.Timestamp(todayStart.time))
+                    .get().await().documents
+            }
 
-            val totalWorkers  = totalWorkersDeferred.await()
+            val workersSnap   = workersSnapDeferred.await()
             val todayRes      = reservationsDeferred.await()
             val lowStockCount = lowStockCountDeferred.await()
+            val orderDocs     = tableOrdersDeferred.await()
 
-            val activeRes = todayRes.count {
+            val confirmedRes = todayRes.filter {
                 it.status.equals("confirmed", ignoreCase = true) ||
                 it.status.equals("checked-in", ignoreCase = true)
             }
-            val dailyRevenue = todayRes
-                .filter {
-                    it.status.equals("confirmed", ignoreCase = true) ||
-                    it.status.equals("checked-in", ignoreCase = true)
-                }
-                .sumOf { it.totalPrice }
+            val dailyRevenue  = confirmedRes.sumOf { it.totalPrice }
+            val totalAdults   = confirmedRes.sumOf { it.adults }
+            val totalChildren = confirmedRes.sumOf { it.children }
+            val staffPresent  = workersSnap.documents.count {
+                it.getString("currentPresence").equals("present", ignoreCase = true)
+            }
+            val paidOrders    = orderDocs.filter { it.getString("status") == "paid" }
+            val tablesServed  = paidOrders.size
+            val ordersRevenue = paidOrders.sumOf {
+                it.getDouble("grandTotal") ?: it.getDouble("total_price") ?: 0.0
+            }
 
             DashboardStats(
-                totalGuests      = reservationRepo.getReservations().size,
-                occupiedRooms    = activeRes,
-                totalStaff       = totalWorkers,
-                dailyRevenue     = dailyRevenue,
-                lowStockItems    = lowStockCount,
-                pendingArrivals  = todayRes.count { it.status.equals("pending", ignoreCase = true) },
+                totalGuests     = reservationRepo.getReservations().size,
+                occupiedRooms   = confirmedRes.size,
+                totalStaff      = workersSnap.size(),
+                dailyRevenue    = dailyRevenue,
+                lowStockItems   = lowStockCount,
+                pendingArrivals = todayRes.count { it.status.equals("pending", ignoreCase = true) },
+                totalAdults     = totalAdults,
+                totalChildren   = totalChildren,
+                tablesServed    = tablesServed,
+                staffPresent    = staffPresent,
+                ordersRevenue   = ordersRevenue,
             )
         } catch (e: Exception) {
             DashboardStats()
