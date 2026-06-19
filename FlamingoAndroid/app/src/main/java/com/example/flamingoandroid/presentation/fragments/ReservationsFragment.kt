@@ -188,6 +188,14 @@ class ReservationsFragment : Fragment() {
         val statusButton = root.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnReservationStatus)
         val deleteButton = root.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnReservationDelete)
 
+        // Cadre rouge si pas de N° de position
+        val missingPosition = reservation.positionNumber.isNullOrBlank()
+        (root as? com.google.android.material.card.MaterialCardView)?.apply {
+            strokeWidth = if (missingPosition) 4 else 0
+            strokeColor = if (missingPosition)
+                android.graphics.Color.parseColor("#E63946") else android.graphics.Color.TRANSPARENT
+        }
+
         avatar.text = initials(name, "R")
         nameView.text = name.ifBlank { "Réservation" }
         phoneView.text = reservation.phone.ifBlank { "Téléphone non disponible" }

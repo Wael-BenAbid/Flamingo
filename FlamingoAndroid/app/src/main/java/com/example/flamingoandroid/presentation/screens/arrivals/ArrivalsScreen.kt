@@ -217,10 +217,18 @@ fun ArrivalsScreen(viewModel: ArrivalsViewModel) {
                         SectionHeader(label = "ANNULÉS / ABSENTS", count = cancelled.size + absent.size, color = Crimson)
                     }
                     items(cancelled, key = { "cancelled-${it.id}" }) { reservation ->
-                        CancelledArrivalCard(reservation = reservation, statusLabel = "Annulé")
+                        CancelledArrivalCard(
+                            reservation = reservation,
+                            statusLabel = "Annulé",
+                            onRevert    = { viewModel.revertToPending(reservation.id) },
+                        )
                     }
                     items(absent, key = { "absent-${it.id}" }) { reservation ->
-                        CancelledArrivalCard(reservation = reservation, statusLabel = "Absent")
+                        CancelledArrivalCard(
+                            reservation = reservation,
+                            statusLabel = "Absent",
+                            onRevert    = { viewModel.revertToPending(reservation.id) },
+                        )
                     }
                 }
 
@@ -306,11 +314,15 @@ private fun PendingArrivalCard(
         if (isEmpty()) append("Position non définie")
     }
 
+    val missingPos = reservation.positionNumber.isNullOrBlank()
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Surface),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Outline),
+        border = androidx.compose.foundation.BorderStroke(
+            if (missingPos) 2.dp else 1.dp,
+            if (missingPos) Crimson else Outline,
+        ),
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -415,11 +427,15 @@ private fun ConfirmedArrivalCard(
         if (isEmpty()) append("—")
     }
 
+    val missingPosConf = reservation.positionNumber.isNullOrBlank()
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Jade.copy(alpha = 0.07f)),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Jade.copy(alpha = 0.35f)),
+        border = androidx.compose.foundation.BorderStroke(
+            if (missingPosConf) 2.dp else 1.dp,
+            if (missingPosConf) Crimson else Jade.copy(alpha = 0.35f),
+        ),
     ) {
         Row(
             modifier = Modifier
@@ -455,7 +471,11 @@ private fun ConfirmedArrivalCard(
 
 // ── Cancelled / absent card ─────────────────────────────────────────────────
 @Composable
-private fun CancelledArrivalCard(reservation: Reservation, statusLabel: String) {
+private fun CancelledArrivalCard(
+    reservation: Reservation,
+    statusLabel: String,
+    onRevert: () -> Unit,
+) {
     val name = "${reservation.firstName} ${reservation.lastName}".trim().ifBlank { "Client" }
     val posLabel = buildString {
         reservation.positionType.takeIf { it.isNotBlank() }?.let { append(it) }
@@ -483,14 +503,23 @@ private fun CancelledArrivalCard(reservation: Reservation, statusLabel: String) 
                     color = Mist,
                 )
             }
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Crimson.copy(alpha = 0.2f))
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-            ) {
-                Text(statusLabel, color = Crimson, style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold)
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Crimson.copy(alpha = 0.2f))
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                ) {
+                    Text(statusLabel, color = Crimson, style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold)
+                }
+                TextButton(
+                    onClick = onRevert,
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                ) {
+                    Text("Modifier", color = Mist, style = MaterialTheme.typography.labelSmall,
+                        fontSize = 9.sp)
+                }
             }
         }
     }

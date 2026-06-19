@@ -1,15 +1,15 @@
 import * as React from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { 
-  FileText, 
-  Download, 
-  FileSpreadsheet, 
-  Filter, 
+import {
+  FileText,
+  Download,
+  FileSpreadsheet,
+  Filter,
   Calendar as CalendarIcon,
   TrendingUp,
   CreditCard,
   Package,
-  Users as UsersIcon
+  Users as UsersIcon,
 } from 'lucide-react';
 import { format, startOfToday } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -46,8 +46,14 @@ interface Position {
 interface InventoryItem {
   id: string;
   name: string;
+  category?: string;
   buyPrice: number;
   sellPrice: number;
+  stockQuantity?: number;
+  quantity?: number;
+  minStock?: number;
+  minimumStock?: number;
+  unit?: string;
 }
 
 interface SaleRecord {
@@ -397,6 +403,81 @@ export default function Reports() {
     doc.save(`bilan-journalier-${selectedDate}.pdf`);
   };
 
+  const exportStockPdf = () => {
+    const doc = new jsPDF();
+    const pageW = doc.internal.pageSize.getWidth();
+    let y = 14;
+
+    const addLine = (text: string, size = 11, bold = false) => {
+      if (y > 270) { doc.addPage(); y = 14; }
+      doc.setFontSize(size);
+      doc.setFont('helvetica', bold ? 'bold' : 'normal');
+      doc.text(text, 14, y);
+      y += size * 0.5 + 2;
+    };
+    const addSeparator = () => { y += 2; doc.setDrawColor(180); doc.line(14, y, pageW - 14, y); y += 4; };
+
+    // ── En-tête ──────────────────────────────────────────────────────
+    addLine('FLAMINGO — BILAN STOCK', 16, true);
+    addLine(`Date : ${format(date, 'dd MMMM yyyy', { locale: fr })}`, 11);
+    addSeparator();
+
+    // ── Résumé ────────────────────────────────────────────────────────
+    const getQty = (item: InventoryItem) => item.stockQuantity ?? item.quantity ?? 0;
+    const getMin = (item: InventoryItem) => item.minStock ?? item.minimumStock ?? 0;
+    const stockValue    = inventory.reduce((s, i) => s + (i.buyPrice || 0) * getQty(i), 0);
+    const criticalItems = inventory.filter((i) => getQty(i) <= getMin(i));
+    const outOfStock    = inventory.filter((i) => getQty(i) === 0);
+    const daySales      = sales.filter((s) => s.date === selectedDate);
+
+    addLine('RÉSUMÉ STOCK', 13, true);
+    y += 2;
+    addLine(`Nombre total d'articles  : ${inventory.length}`);
+    addLine(`Articles en stock critique : ${criticalItems.length}`);
+    addLine(`Articles en rupture        : ${outOfStock.length}`);
+    addLine(`Valeur totale du stock     : ${stockValue.toFixed(2)} DT`);
+    addSeparator();
+
+    // ── Ventes du jour (consommés) ────────────────────────────────────
+    addLine(`CONSOMMÉS AUJOURD'HUI (${daySales.length} articles)`, 13, true);
+    y += 2;
+    if (daySales.length === 0) {
+      addLine('Aucune vente enregistrée ce jour.');
+    } else {
+      daySales.forEach((s, i) => {
+        addLine(`${i + 1}. ${s.productName}  ×${s.quantity}  @  ${s.unitSellPrice.toFixed(2)} DT  =  ${s.totalPrice.toFixed(2)} DT`);
+      });
+    }
+    addSeparator();
+
+    // ── Détail stock par article ──────────────────────────────────────
+    addLine('ÉTAT DU STOCK (TOUS LES ARTICLES)', 13, true);
+    y += 2;
+
+    // Grouper par catégorie
+    const byCategory: Record<string, InventoryItem[]> = {};
+    inventory.forEach((item) => {
+      const cat = item.category?.trim() || 'Autre';
+      if (!byCategory[cat]) byCategory[cat] = [];
+      byCategory[cat].push(item);
+    });
+
+    Object.entries(byCategory).sort(([a], [b]) => a.localeCompare(b, 'fr')).forEach(([cat, items]) => {
+      addLine(`[ ${cat.toUpperCase()} ]`, 11, true);
+      items.forEach((item) => {
+        const qty    = getQty(item);
+        const min    = getMin(item);
+        const val    = ((item.buyPrice || 0) * qty).toFixed(2);
+        const status = qty === 0 ? '⚠ RUPTURE' : qty <= min ? '⚠ CRITIQUE' : '✓ OK';
+        const unit   = item.unit ? ` ${item.unit}` : '';
+        addLine(`  • ${item.name}   Stock: ${qty}${unit} / Min: ${min}   Val: ${val} DT   ${status}`);
+      });
+      y += 1;
+    });
+
+    doc.save(`bilan-stock-${selectedDate}.pdf`);
+  };
+
   return (
     <div className="space-y-10 text-navy">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -420,7 +501,11 @@ export default function Reports() {
           </Popover>
           <Button onClick={exportPdf} className="bg-green-500 hover:bg-green-600 text-white h-10 px-6 rounded-none uppercase text-[11px] font-bold tracking-widest gap-2">
             <Download className="w-4 h-4" />
-            Exporter PDF
+            Bilan PDF
+          </Button>
+          <Button onClick={exportStockPdf} className="bg-blue-600 hover:bg-blue-700 text-white h-10 px-6 rounded-none uppercase text-[11px] font-bold tracking-widest gap-2">
+            <Package className="w-4 h-4" />
+            Bilan Stock PDF
           </Button>
         </div>
       </div>

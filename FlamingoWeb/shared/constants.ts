@@ -77,7 +77,7 @@ export const ROLE_HOME_ROUTE: Record<StaffRole, string> = {
   responsable: '/',
   cuisinier:   '/kitchen',
   barman:      '/kitchen',
-  serveur:     '/arrivals',
+  serveur:     '/place-order',
   none:        '/login',
 };
 

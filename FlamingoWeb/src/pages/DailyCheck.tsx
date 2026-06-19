@@ -189,8 +189,9 @@ export default function DailyCheck() {
           <Card
             key={res.id}
             className={cn(
-              'group transition-all border-none shadow-sm',
+              'group transition-all shadow-sm',
               res.status === 'confirmed' ? 'bg-green-50/30' : 'bg-white',
+              !res.positionNumber?.trim() ? 'border-2 border-red-400' : 'border-none',
             )}
           >
             <CardContent className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">

@@ -11,15 +11,12 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { USER_ROLES, type StaffRole } from '../../shared/constants';
 
 const ROLE_HOME_ROUTE: Record<StaffRole, string> = {
-  admin: '/',
-  responsable: '/reservations',
-  serveur: '/arrivals',
-  chef_serveur: '/arrivals',
-  cuisine: '/kitchen',
-  securite: '/arrivals',
-  employee: '/arrivals',
-  nettoyage: '/arrivals',
-  none: '/login',
+  admin:       '/',
+  responsable: '/',
+  cuisinier:   '/kitchen',
+  barman:      '/kitchen',
+  serveur:     '/place-order',
+  none:        '/login',
 };
 
 function getLoginErrorMessage(error: unknown): string {
@@ -174,15 +171,41 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 relative overflow-hidden px-4">
-      {/* Decorative elements */}
-      <div className="absolute top-0 right-0 -translate-y-1/2 translate-x-1/4 w-[600px] h-[600px] bg-flamingo/5 rounded-full blur-3xl" />
-      <div className="absolute bottom-0 left-0 translate-y-1/2 -translate-x-1/4 w-[400px] h-[400px] bg-sand/20 rounded-full blur-3xl" />
+    <div className="min-h-screen flex relative overflow-hidden">
+      {/* Left panel — image décorative */}
+      <div className="hidden lg:flex flex-col justify-between w-[45%] bg-navy relative overflow-hidden p-12">
+        <div className="absolute inset-0 bg-gradient-to-br from-navy via-navy/90 to-flamingo/20" />
+        <img
+          src="https://firebasestorage.googleapis.com/v0/b/flamingo-ea5e5.firebasestorage.app/o/flamingo.jpeg?alt=media&token=eb138c1e-a9e1-405a-9b47-de81c2588b88"
+          alt="Flamingo"
+          className="absolute inset-0 w-full h-full object-cover opacity-20 mix-blend-luminosity"
+        />
+        <div className="relative z-10">
+          <div className="flex items-center gap-3 mb-2">
+            <img src="https://firebasestorage.googleapis.com/v0/b/flamingo-ea5e5.firebasestorage.app/o/flamingo.jpeg?alt=media&token=eb138c1e-a9e1-405a-9b47-de81c2588b88" alt="Logo" className="w-12 h-12 rounded-xl object-cover shadow-lg" />
+            <span className="text-white text-2xl font-bold tracking-widest uppercase">Flamingo</span>
+          </div>
+          <p className="text-white/50 text-xs uppercase tracking-widest">Beach Club & Restaurant</p>
+        </div>
+        <div className="relative z-10">
+          <p className="text-white/70 text-lg font-light leading-relaxed italic">
+            "L'excellence au bord de la mer, chaque jour."
+          </p>
+          <div className="mt-6 flex gap-2">
+            {[1,2,3].map(i => <div key={i} className={`h-1 rounded-full ${i===1 ? 'w-8 bg-flamingo' : 'w-4 bg-white/20'}`} />)}
+          </div>
+        </div>
+      </div>
 
-      <Card className="w-full max-w-[440px] relative z-10 shadow-2xl border-none glass-morphism pt-4">
-        <CardHeader className="text-center space-y-5 pb-2">
-          <div className="mx-auto w-16 h-16 rounded-2xl bg-flamingo flex items-center justify-center shadow-xl shadow-flamingo/30 transition-transform duration-300 hover:scale-105">
-            <Waves className="text-white w-8 h-8" />
+      {/* Right panel — formulaire */}
+      <div className="flex-1 flex items-center justify-center bg-sand px-8 py-12 relative">
+        <div className="absolute top-0 right-0 w-96 h-96 bg-flamingo/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/4" />
+        <div className="absolute bottom-0 left-0 w-64 h-64 bg-navy/5 rounded-full blur-3xl translate-y-1/2 -translate-x-1/4" />
+
+      <Card className="w-full max-w-[420px] relative z-10 shadow-xl border border-border/50 bg-white/80 backdrop-blur-sm">
+        <CardHeader className="text-center space-y-4 pb-2 pt-8">
+          <div className="mx-auto w-20 h-20 rounded-2xl overflow-hidden shadow-xl shadow-flamingo/20 transition-transform duration-300 hover:scale-105 border-2 border-flamingo/20">
+            <img src="https://firebasestorage.googleapis.com/v0/b/flamingo-ea5e5.firebasestorage.app/o/flamingo.jpeg?alt=media&token=eb138c1e-a9e1-405a-9b47-de81c2588b88" alt="Flamingo Logo" className="w-full h-full object-cover" />
           </div>
           <div className="space-y-1">
             <CardTitle className="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-flamingo to-navy">
@@ -294,11 +317,12 @@ export default function Login() {
         </CardFooter>
        </Card>
        
-       <div className="absolute bottom-8 text-slate-500 text-xs font-medium flex items-center gap-2">
-         <span>&copy; 2026 Flamingo</span>
-         <span className="text-slate-300">•</span>
-         <span>Tous droits réservés</span>
-       </div>
-     </div>
+        <div className="absolute bottom-8 text-slate-400 text-xs font-medium flex items-center gap-2">
+          <span>&copy; 2026 Flamingo</span>
+          <span className="text-slate-300">•</span>
+          <span>créé par wael_ben_abid</span>
+        </div>
+      </div>
+    </div>
   );
 }

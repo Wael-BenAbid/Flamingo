@@ -133,7 +133,9 @@ export function GlassReservationCard({
           rotateY,
           transformStyle: 'preserve-3d',
           background:     T.surface,
-          border:         `1px solid ${expanded ? T.borderHover : T.borderFaint}`,
+          border:         !res.positionNumber?.trim()
+            ? '2px solid rgba(230,57,70,0.75)'
+            : `1px solid ${expanded ? T.borderHover : T.borderFaint}`,
           boxShadow:      expanded
             ? `6px 6px 24px rgba(6,13,24,0.65), -4px -4px 14px rgba(36,52,82,0.28),
                inset 0 1px 0 rgba(245,155,53,0.08)`
