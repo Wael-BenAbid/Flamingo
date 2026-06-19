@@ -52,7 +52,7 @@ export default function Reservations() {
   const pastGroups   = getReservationsByMonth(selectedMonth, true);
   const displayed    = search.trim() ? searchReservations(search) : null;
 
-  const monthResevations = [...activeGroups, ...pastGroups].flatMap((g) => g.reservations);
+  const monthResevations = [...activeGroups, ...pastGroups].flatMap((g) => g.items);
   const monthTotalAdults   = monthResevations.reduce((s, r) => s + (r.adults || 0), 0);
   const monthTotalChildren = monthResevations.reduce((s, r) => s + (r.children || 0), 0);
 
