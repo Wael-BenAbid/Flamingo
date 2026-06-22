@@ -11,6 +11,7 @@ import com.example.flamingoandroid.presentation.activities.HomeActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 class MainActivity : AppCompatActivity() {
 
@@ -36,21 +37,39 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
+        // Email admin connu → naviguer directement sans requête Firestore
+        if (firebaseService.isAdminEmail(currentUser.email)) {
+            startActivity(Intent(this, HomeActivity::class.java))
+            finish()
+            return
+        }
+
         binding.tvMainStatus.text = getString(R.string.main_status_checking)
         binding.btnAdminLogin.isEnabled = false
 
         lifecycleScope.launch {
-            val hasAdminAccess = withContext(Dispatchers.IO) {
-                firebaseService.hasAdminAccess(currentUser)
+            // Timeout 10s — évite le blocage infini si Firestore est injoignable
+            val hasAccess = withTimeoutOrNull(10_000L) {
+                withContext(Dispatchers.IO) {
+                    firebaseService.hasAdminAccess(currentUser)
+                }
             }
 
-            if (hasAdminAccess) {
-                startActivity(Intent(this@MainActivity, HomeActivity::class.java))
-                finish()
-            } else {
-                firebaseService.signOut()
-                binding.btnAdminLogin.isEnabled = true
-                binding.tvMainStatus.text = getString(R.string.main_status_ready)
+            when {
+                hasAccess == true -> {
+                    startActivity(Intent(this@MainActivity, HomeActivity::class.java))
+                    finish()
+                }
+                hasAccess == null -> {
+                    // Timeout réseau — ne pas déconnecter, laisser réessayer
+                    binding.btnAdminLogin.isEnabled = true
+                    binding.tvMainStatus.text = "Connexion lente — réessayez"
+                }
+                else -> {
+                    firebaseService.signOut()
+                    binding.btnAdminLogin.isEnabled = true
+                    binding.tvMainStatus.text = getString(R.string.main_status_ready)
+                }
             }
         }
     }

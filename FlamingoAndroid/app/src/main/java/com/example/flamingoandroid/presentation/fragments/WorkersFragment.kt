@@ -1,33 +1,36 @@
 package com.example.flamingoandroid.presentation.fragments
 
 import android.app.DatePickerDialog
+import android.content.Context
 import android.content.res.ColorStateList
 import android.os.Bundle
 import android.text.InputType
-import android.text.method.PasswordTransformationMethod
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.GridLayout
 import android.widget.HorizontalScrollView
-import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
-import androidx.core.widget.doOnTextChanged
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
+import androidx.core.widget.doOnTextChanged
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.example.flamingoandroid.R
 import com.example.flamingoandroid.data.firebase.FirebaseService
 import com.example.flamingoandroid.data.models.Worker
 import com.example.flamingoandroid.databinding.FragmentWorkersBinding
+import com.example.flamingoandroid.presentation.access.StaffAccess
 import com.example.flamingoandroid.presentation.util.bindPresenceStatus
 import com.example.flamingoandroid.presentation.util.formatMoney
 import com.example.flamingoandroid.presentation.util.initials
-import com.example.flamingoandroid.presentation.access.StaffAccess
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.snackbar.Snackbar
+import com.google.android.material.textfield.TextInputEditText
+import com.google.android.material.textfield.TextInputLayout
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
@@ -38,13 +41,12 @@ import java.util.Locale
 
 class WorkersFragment : Fragment() {
 
+    // Catégories canoniques — synchronisées avec WORKER_CATEGORIES de shared/constants.ts
     private val workerCategories = listOf(
-        "Chef serveur",
+        "Responsable",
         "Serveur",
-        "Cuisine",
-        "Sécurité",
-        "Nettoyage",
-        "Responsable"
+        "Cuisinier",
+        "Barman"
     )
 
     private var _binding: FragmentWorkersBinding? = null
@@ -227,7 +229,7 @@ class WorkersFragment : Fragment() {
         nameView.text = worker.fullName.ifBlank { "Travailleur" }
         categoryView.text = worker.category.ifBlank { "Catégorie" }
         presenceView.bindPresenceStatus(requireContext(), getEffectivePresence(worker))
-        statsView.text = "${worker.dailyWage.toInt()} DT/jour • ${worker.attendanceCount.toInt()} jours • ${formatMoney(worker.totalAdvances)} avances • ${formatMoney(worker.totalPenalties)} pénalités"
+        statsView.text = "${worker.dailyWage.toInt()} DT/jour  •  ${worker.attendanceCount.toInt()} jours présents\n${formatMoney(worker.totalAdvances)} avances  •  ${formatMoney(worker.totalPenalties)} pénalités"
 
         root.isClickable = true
         root.isFocusable = true
@@ -526,6 +528,55 @@ class WorkersFragment : Fragment() {
         }
     }
 
+    // ── Helpers formulaires ───────────────────────────────────────────────────
+
+    private fun Int.dp(context: Context) =
+        (this * context.resources.displayMetrics.density + 0.5f).toInt()
+
+    private fun makeTil(
+        context: Context,
+        hint: String,
+        inputType: Int = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS,
+        isPassword: Boolean = false,
+        suffixText: String? = null,
+    ): Pair<TextInputLayout, TextInputEditText> {
+        val til = TextInputLayout(context).apply {
+            this.hint = hint
+            boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_OUTLINE
+            setBoxCornerRadii(12f, 12f, 12f, 12f)
+            if (isPassword) {
+                endIconMode = TextInputLayout.END_ICON_PASSWORD_TOGGLE
+            }
+            if (suffixText != null) this.suffixText = suffixText
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = 14.dp(context) }
+        }
+        val et = TextInputEditText(til.context).apply {
+            this.inputType = if (isPassword)
+                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            else inputType
+        }
+        til.addView(et)
+        return til to et
+    }
+
+    private fun sectionLabel(context: Context, text: String): TextView =
+        TextView(context).apply {
+            this.text = text
+            textSize = 11f
+            setTextColor(ContextCompat.getColor(context, R.color.text_secondary))
+            letterSpacing = 0.1f
+            setPadding(2.dp(context), 4.dp(context), 0, 6.dp(context))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+
+    // ── Dialog : Nouveau travailleur ──────────────────────────────────────────
+
     private fun showAddWorkerDialog() {
         if (!canManageWorkers()) {
             Snackbar.make(binding.root, "Action réservée aux administrateurs et responsables", Snackbar.LENGTH_SHORT).show()
@@ -533,96 +584,130 @@ class WorkersFragment : Fragment() {
         }
 
         val context = requireContext()
-        val container = android.widget.LinearLayout(context).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
-            setPadding(24, 12, 24, 0)
-        }
-        val nameInput = EditText(context).apply { hint = "Nom complet" }
-        val emailInput = EditText(context).apply {
-            hint = "Adresse e-mail"
+        val pad = 20.dp(context)
+        val formatter = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        var selectedCategory = workerCategories[1]   // "Serveur" par défaut
+        var selectedStartDate = formatter.format(Date())
+
+        // ── Champs texte ─────────────────────────────────────────────────────
+        val (tilName, etName) = makeTil(context, "Nom complet")
+        val (tilEmail, etEmail) = makeTil(
+            context, "Adresse e-mail",
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
-        }
-        val passwordInput = EditText(context).apply {
-            hint = "Mot de passe"
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-            transformationMethod = PasswordTransformationMethod.getInstance()
-        }
-        val categoryButton = MaterialButton(context).apply {
-            text = "Catégorie: Serveur"
-            isAllCaps = false
-        }
-        val dateButton = MaterialButton(context).apply {
-            text = "Date d'entrée: ${SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(java.util.Date())}"
-            isAllCaps = false
-        }
-        val wageInput = EditText(context).apply {
-            hint = "Salaire journalier"
-            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
-        }
-        container.addView(nameInput)
-        container.addView(emailInput)
-        container.addView(passwordInput)
-        container.addView(categoryButton)
-        container.addView(dateButton)
-        container.addView(wageInput)
+        )
+        val (tilPassword, etPassword) = makeTil(
+            context, "Mot de passe (6 car. min.)",
+            isPassword = true
+        )
+        val (tilWage, etWage) = makeTil(
+            context, "Salaire / jour",
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL,
+            suffixText = "DT"
+        )
 
-        var selectedCategory = workerCategories[1]
-        var selectedStartDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(java.util.Date())
-
-        categoryButton.setOnClickListener {
-            MaterialAlertDialogBuilder(context)
-                .setTitle("Choisir la catégorie")
-                .setItems(workerCategories.toTypedArray()) { _, which ->
-                    selectedCategory = workerCategories[which]
-                    categoryButton.text = "Catégorie: $selectedCategory"
-                }
-                .show()
+        // ── Sélecteur de catégorie (grille 2 × 2) ───────────────────────────
+        val categoryButtons = mutableMapOf<String, MaterialButton>()
+        val categoryGrid = GridLayout(context).apply {
+            columnCount = 2
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = 14.dp(context) }
         }
 
-        dateButton.setOnClickListener {
-            val calendar = Calendar.getInstance()
-            val formatter = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-            try {
-                formatter.parse(selectedStartDate)?.let { calendar.time = it }
-            } catch (_: Exception) {
-                calendar.time = java.util.Date()
+        fun refreshCategoryButtons() {
+            categoryButtons.forEach { (cat, btn) ->
+                val selected = cat == selectedCategory
+                btn.isChecked = selected
             }
-
-            DatePickerDialog(
-                context,
-                { _, year, month, dayOfMonth ->
-                    calendar.set(year, month, dayOfMonth)
-                    selectedStartDate = formatter.format(calendar.time)
-                    dateButton.text = "Date d'entrée: $selectedStartDate"
-                },
-                calendar.get(Calendar.YEAR),
-                calendar.get(Calendar.MONTH),
-                calendar.get(Calendar.DAY_OF_MONTH)
-            ).show()
         }
 
+        workerCategories.forEach { cat ->
+            val btn = MaterialButton(
+                context, null,
+                com.google.android.material.R.attr.materialButtonOutlinedStyle
+            ).apply {
+                text = cat
+                isAllCaps = false
+                isCheckable = true
+                setOnClickListener {
+                    selectedCategory = cat
+                    refreshCategoryButtons()
+                }
+                val glp = GridLayout.LayoutParams().apply {
+                    width = 0
+                    columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
+                    setMargins(4.dp(context), 4.dp(context), 4.dp(context), 4.dp(context))
+                }
+                layoutParams = glp
+            }
+            categoryButtons[cat] = btn
+            categoryGrid.addView(btn)
+        }
+        refreshCategoryButtons()
+
+        // ── Bouton date d'entrée ─────────────────────────────────────────────
+        val dateBtn = MaterialButton(
+            context, null,
+            com.google.android.material.R.attr.materialButtonOutlinedStyle
+        ).apply {
+            text = "📅  $selectedStartDate"
+            isAllCaps = false
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = 14.dp(context) }
+            setOnClickListener {
+                val cal = Calendar.getInstance()
+                try { formatter.parse(selectedStartDate)?.let { cal.time = it } } catch (_: Exception) {}
+                DatePickerDialog(context, { _, y, m, d ->
+                    cal.set(y, m, d)
+                    selectedStartDate = formatter.format(cal.time)
+                    text = "📅  $selectedStartDate"
+                }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)).show()
+            }
+        }
+
+        // ── Assemblage de la vue ─────────────────────────────────────────────
+        val inner = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, pad / 2, pad, pad / 2)
+        }
+        inner.addView(tilName)
+        inner.addView(tilEmail)
+        inner.addView(tilPassword)
+        inner.addView(sectionLabel(context, "CATÉGORIE"))
+        inner.addView(categoryGrid)
+        inner.addView(sectionLabel(context, "DATE D'ENTRÉE"))
+        inner.addView(dateBtn)
+        inner.addView(sectionLabel(context, "RÉMUNÉRATION"))
+        inner.addView(tilWage)
+
+        val scrollView = ScrollView(context).apply { addView(inner) }
+
+        // ── Dialog ───────────────────────────────────────────────────────────
         MaterialAlertDialogBuilder(context)
             .setTitle("Nouveau travailleur")
-            .setView(container)
+            .setView(scrollView)
             .setPositiveButton("Enregistrer") { _, _ ->
-                val fullName = nameInput.text.toString().trim()
-                val email = emailInput.text.toString().trim()
-                val password = passwordInput.text.toString().trim()
-                val wage = wageInput.text.toString().toDoubleOrNull() ?: 0.0
+                val fullName = etName.text?.toString()?.trim().orEmpty()
+                val email    = etEmail.text?.toString()?.trim().orEmpty()
+                val password = etPassword.text?.toString()?.trim().orEmpty()
+                val wage     = etWage.text?.toString()?.toDoubleOrNull() ?: 0.0
 
-                if (fullName.isBlank()) {
-                    Snackbar.make(binding.root, "Le nom complet est obligatoire", Snackbar.LENGTH_SHORT).show()
-                    return@setPositiveButton
-                }
-
-                if (email.isBlank()) {
-                    Snackbar.make(binding.root, "L'adresse e-mail est obligatoire", Snackbar.LENGTH_SHORT).show()
-                    return@setPositiveButton
-                }
-
-                if (password.length < 6) {
-                    Snackbar.make(binding.root, "Le mot de passe doit contenir au moins 6 caractères", Snackbar.LENGTH_SHORT).show()
-                    return@setPositiveButton
+                when {
+                    fullName.isBlank() -> {
+                        tilName.error = "Nom obligatoire"
+                        return@setPositiveButton
+                    }
+                    email.isBlank() -> {
+                        tilEmail.error = "E-mail obligatoire"
+                        return@setPositiveButton
+                    }
+                    password.length < 6 -> {
+                        tilPassword.error = "6 caractères minimum"
+                        return@setPositiveButton
+                    }
                 }
 
                 viewLifecycleOwner.lifecycleScope.launch {
@@ -630,18 +715,18 @@ class WorkersFragment : Fragment() {
                         .onSuccess { account ->
                             firebaseService.addWorker(
                                 Worker(
-                                    id = account.uid,
-                                    uid = account.uid,
-                                    fullName = fullName,
-                                    category = selectedCategory,
-                                    role = account.role,
-                                    dailyWage = wage,
-                                    startDate = selectedStartDate,
-                                    email = account.email
+                                    id          = account.uid,
+                                    uid         = account.uid,
+                                    fullName    = fullName,
+                                    category    = selectedCategory,
+                                    role        = account.role,
+                                    dailyWage   = wage,
+                                    startDate   = selectedStartDate,
+                                    email       = account.email
                                 )
                             ).onSuccess {
                                 viewModel.loadWorkers()
-                                Snackbar.make(binding.root, "Compte créé pour $fullName", Snackbar.LENGTH_SHORT).show()
+                                Snackbar.make(binding.root, "✅ Compte créé pour $fullName", Snackbar.LENGTH_SHORT).show()
                             }.onFailure { error ->
                                 Snackbar.make(binding.root, error.message ?: "Erreur lors de l'enregistrement", Snackbar.LENGTH_LONG).show()
                             }
@@ -655,6 +740,8 @@ class WorkersFragment : Fragment() {
             .show()
     }
 
+    // ── Dialog : Avance / Pénalité / Paiement ────────────────────────────────
+
     private fun showMoneyDialog(
         title: String,
         reasonHint: String,
@@ -662,24 +749,32 @@ class WorkersFragment : Fragment() {
         onSubmit: (amount: Double, secondValue: String) -> Unit
     ) {
         val context = requireContext()
-        val container = android.widget.LinearLayout(context).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
-            setPadding(24, 12, 24, 0)
+        val pad = 20.dp(context)
+
+        val (tilAmount, etAmount) = makeTil(
+            context, amountHint,
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL,
+            suffixText = "DT"
+        )
+        val (tilReason, etReason) = makeTil(context, reasonHint)
+
+        val inner = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, pad / 2, pad, pad / 2)
+            addView(tilAmount)
+            addView(tilReason)
         }
-        val amountInput = EditText(context).apply {
-            hint = amountHint
-            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
-        }
-        val reasonInput = EditText(context).apply { hint = reasonHint }
-        container.addView(amountInput)
-        container.addView(reasonInput)
 
         MaterialAlertDialogBuilder(context)
             .setTitle(title)
-            .setView(container)
+            .setView(inner)
             .setPositiveButton("Valider") { _, _ ->
-                val amount = amountInput.text.toString().toDoubleOrNull() ?: 0.0
-                val secondValue = reasonInput.text.toString().trim()
+                val amount = etAmount.text?.toString()?.toDoubleOrNull() ?: 0.0
+                if (amount <= 0.0) {
+                    Snackbar.make(binding.root, "Montant invalide", Snackbar.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                val secondValue = etReason.text?.toString()?.trim().orEmpty()
                 onSubmit(amount, secondValue)
             }
             .setNegativeButton("Annuler", null)

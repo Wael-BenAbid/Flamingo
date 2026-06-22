@@ -3,10 +3,12 @@ package com.example.flamingoandroid.data.repository
 import com.example.flamingoandroid.data.models.AppConfig
 import com.example.flamingoandroid.data.models.Position
 import com.example.flamingoandroid.data.models.TableOrder
+import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import java.util.Calendar
 
 class TableRepository(
     private val db: FirebaseFirestore = FirebaseFirestore.getInstance(),
@@ -45,7 +47,16 @@ class TableRepository(
     }
 
     fun listenToActiveOrders(): Flow<List<TableOrder>> = callbackFlow {
+        val startOfToday = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.time
+        val startTimestamp = Timestamp(startOfToday)
+
         val listener = db.collection("table_orders")
+            .whereGreaterThanOrEqualTo("created_at", startTimestamp)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     trySend(emptyList())

@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import com.example.flamingoandroid.presentation.screens.menu.TableOrderingActivityContent
 import com.example.flamingoandroid.presentation.theme.FlamingoTheme
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
 class TableOrderingActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -22,6 +23,16 @@ class TableOrderingActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Quitter ?")
+            .setMessage("Voulez-vous vraiment quitter Flamingo ?")
+            .setPositiveButton("Quitter") { _, _ -> finish() }
+            .setNegativeButton("Rester", null)
+            .show()
     }
 
     companion object {

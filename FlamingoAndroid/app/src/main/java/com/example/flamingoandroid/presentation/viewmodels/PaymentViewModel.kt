@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withTimeout
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -92,6 +93,7 @@ class PaymentViewModel(
     ) {
         viewModelScope.launch {
             try {
+                withTimeout(20_000) {
                 val now      = Timestamp.now()
                 val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
 
@@ -143,7 +145,9 @@ class PaymentViewModel(
 
                 _paidTables.value = _paidTables.value + tableLabel
                 _action.value = PaymentAction.Success(tableLabel)
-
+                } // end withTimeout
+            } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                _action.value = PaymentAction.Error("Délai dépassé — vérifiez la connexion réseau")
             } catch (e: Exception) {
                 _action.value = PaymentAction.Error(e.message ?: "Erreur inconnue")
             }
@@ -206,6 +210,7 @@ class PaymentViewModel(
     ) {
         viewModelScope.launch {
             try {
+                withTimeout(20_000) {
                 val now      = Timestamp.now()
                 val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
                 val reservationTotal = adultUnitPrice * adults + childUnitPrice * children
@@ -290,6 +295,9 @@ class PaymentViewModel(
 
                 _paidTables.value = _paidTables.value + tableLabel
                 _action.value = PaymentAction.Success(tableLabel)
+                } // end withTimeout
+            } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                _action.value = PaymentAction.Error("Délai dépassé — vérifiez la connexion réseau")
             } catch (e: Exception) {
                 _action.value = PaymentAction.Error(e.message ?: "Erreur inconnue")
             }

@@ -38,8 +38,44 @@ class FirebaseService {
     companion object {
         private val ADMIN_EMAILS = setOf(
             "waelbenabid1@gmail.com",
-            "abidos.games@gmail.com"
+            "abidos.games@gmail.com",
+            "admin@gmail.com",
+            "m.aminejaouani@gmail.com"
         )
+
+        @Volatile
+        private var INSTANCE: FirebaseService? = null
+
+        fun getInstance(): FirebaseService = INSTANCE ?: synchronized(this) {
+            INSTANCE ?: FirebaseService().also { INSTANCE = it }
+        }
+    }
+
+    // ==================== AUDIT TRAIL ====================
+
+    suspend fun logAudit(
+        action: String,
+        collectionName: String,
+        documentId: String? = null,
+        details: Map<String, Any?> = emptyMap()
+    ) {
+        try {
+            val user = auth.currentUser ?: return
+            val entry = hashMapOf<String, Any?>(
+                "timestamp"    to Timestamp.now(),
+                "userId"       to user.uid,
+                "userName"     to (user.displayName?.takeIf { it.isNotBlank() } ?: user.email ?: user.uid),
+                "userEmail"    to user.email,
+                "action"       to action,
+                "collection"   to collectionName,
+                "documentId"   to documentId,
+                "details"      to details.ifEmpty { null },
+                "platform"     to "android",
+            )
+            db.collection("audit_logs").add(entry).await()
+        } catch (_: Exception) {
+            // Never fail the main operation for audit
+        }
     }
 
     // ==================== AUTHENTICATION ====================
@@ -59,38 +95,20 @@ class FirebaseService {
     private fun normalizeRoleValue(value: String?): String? {
         val raw = value?.trim().orEmpty()
         if (raw.isBlank()) return null
-
-        val normalized = raw.lowercase(Locale.getDefault())
-            .replace('é', 'e')
-            .replace('è', 'e')
-            .replace('ê', 'e')
-            .replace('à', 'a')
-            .replace('ç', 'c')
+        val s = raw.lowercase(Locale.getDefault())
+            .replace('é', 'e').replace('è', 'e').replace('ê', 'e')
+            .replace('à', 'a').replace('ç', 'c')
             .replace(Regex("[\\s\\-]+"), "_")
-
-        return when (normalized) {
-            "admin",
-            "responsable",
-            "serveur",
-            "chef_serveur",
-            "cuisine",
-            "securite",
-            "nettoyage",
-            "employee" -> normalized
-            "server",
-            "waiter" -> "serveur"
-            "manager" -> "responsable"
-            "cook",
-            "kitchen" -> "cuisine"
-            "chef_cuisinier",
-            "chef_cuisiner",
-            "cuisinier",
-            "chef_de_cuisine",
-            "chef_cuisine" -> "cuisine"
-            "securité",
-            "sécurité" -> "securite"
-            "nettoyage" -> "nettoyage"
-            else -> normalized
+        return when {
+            s == "admin"                                                -> "admin"
+            s == "responsable" || s == "manager"                       -> "responsable"
+            s == "cuisinier" || s == "cuisine" || s == "cook"
+                || s == "kitchen" || s.startsWith("chef_cu")           -> "cuisinier"
+            s == "barman" || s == "bar" || s == "barmaid"
+                || s == "bartender"                                    -> "barman"
+            s == "serveur" || s == "server" || s == "waiter"
+                || s == "chef_serveur"                                 -> "serveur"
+            else                                                       -> null
         }
     }
 
@@ -177,12 +195,19 @@ class FirebaseService {
                 } else if (hasAdminAccess(user)) {
                     "admin"
                 } else {
-                    val workerByUid = db.collection("workers").whereEqualTo("uid", user.uid).limit(1).get().await().documents.firstOrNull()
-                    val workerByEmail = user.email?.let { email ->
-                        db.collection("workers").whereEqualTo("email", email.trim()).limit(1).get().await().documents.firstOrNull()
+                    // GET par UID : la règle Firestore autorise resource.data.uid == request.auth.uid
+                    // (contrairement à LIST qui exige isAdmin/isResponsable/hasStaffClaimRole)
+                    val byUidDoc = db.collection("workers").document(user.uid).get().await()
+                    if (byUidDoc.exists()) {
+                        resolveRoleFromDoc(byUidDoc)
+                    } else {
+                        // Fallback email — fonctionne si l'admin lit (lui a les droits list)
+                        user.email?.let { email ->
+                            db.collection("workers").whereEqualTo("email", email.trim())
+                                .limit(1).get().await().documents.firstOrNull()
+                                ?.let(::resolveRoleFromDoc)
+                        }
                     }
-                    workerByUid?.let(::resolveRoleFromDoc)
-                        ?: workerByEmail?.let(::resolveRoleFromDoc)
                 }
             }
         }
@@ -302,6 +327,7 @@ class FirebaseService {
             )
             .await()
 
+        logAudit("presence", "attendance", "${workerId}_$date", mapOf("workerId" to workerId, "date" to date, "status" to status))
         Result.success(Unit)
     } catch (e: Exception) {
         Result.failure(e)
@@ -350,16 +376,18 @@ class FirebaseService {
     }
 
     private fun resolveRoleFromCategory(category: String?): String {
-        return when (normalizeRoleValue(category)) {
-            "admin" -> "admin"
-            "responsable" -> "responsable"
-            "serveur" -> "serveur"
-            "chef_serveur" -> "chef_serveur"
-            "cuisine" -> "cuisine"
-            "securite" -> "securite"
-            "nettoyage" -> "nettoyage"
-            "employee" -> "employee"
-            else -> "employee"
+        val raw = category?.trim().orEmpty().lowercase(Locale.getDefault())
+            .replace('é', 'e').replace('è', 'e').replace('ê', 'e')
+            .replace('à', 'a').replace('ç', 'c')
+        return when {
+            raw == "responsable" || raw == "manager"          -> "responsable"
+            raw == "cuisinier" || raw == "cuisine"
+                || raw.startsWith("chef_cu")                  -> "cuisinier"
+            raw == "barman" || raw == "bar" || raw == "barmaid" -> "barman"
+            raw == "serveur" || raw == "server" || raw == "waiter"
+                || raw == "chef_serveur"                       -> "serveur"
+            raw == "admin"                                     -> "admin"
+            else                                               -> "serveur"
         }
     }
 
@@ -504,14 +532,39 @@ class FirebaseService {
 
     suspend fun addWorker(worker: Worker): Result<String> = try {
         val workerId = worker.uid.trim().ifBlank { worker.id.trim() }
+        val role = worker.role.ifBlank { resolveRoleFromCategory(worker.category) }
+        val now = Timestamp.now()
+
+        // Utiliser un HashMap pour s'assurer que tous les champs (y compris
+        // createdAt/updatedAt annotés @Exclude sur le data class) sont bien écrits
+        // en Firestore. Sans ça, les timestamps sont silencieusement omis.
+        val data = hashMapOf<String, Any?>(
+            "fullName"        to worker.fullName,
+            "category"        to worker.category,
+            "role"            to role,
+            "email"           to worker.email,
+            "uid"             to workerId.ifBlank { "" },
+            "dailyWage"       to worker.dailyWage,
+            "totalAdvances"   to worker.totalAdvances,
+            "totalPenalties"  to worker.totalPenalties,
+            "totalPaid"       to worker.totalPaid,
+            "totalEarned"     to worker.totalEarned,
+            "attendanceCount" to worker.attendanceCount,
+            "currentPresence" to worker.currentPresence,
+            "lastPresenceDate" to worker.lastPresenceDate,
+            "startDate"       to worker.startDate,
+            "isActive"        to worker.isActive,
+            "createdAt"       to now,
+            "updatedAt"       to now,
+        )
 
         if (workerId.isBlank()) {
-            val docRef = db.collection("workers").add(prepareWorkerForCreate("", worker)).await()
+            val docRef = db.collection("workers").add(data).await()
+            logAudit("create-worker", "workers", docRef.id, mapOf("name" to worker.fullName, "category" to worker.category))
             Result.success(docRef.id)
         } else {
-            db.collection("workers").document(workerId)
-                .set(prepareWorkerForCreate(workerId, worker))
-                .await()
+            db.collection("workers").document(workerId).set(data).await()
+            logAudit("create-worker", "workers", workerId, mapOf("name" to worker.fullName, "category" to worker.category))
             Result.success(workerId)
         }
     } catch (e: Exception) {
@@ -519,7 +572,26 @@ class FirebaseService {
     }
 
     suspend fun updateWorker(workerId: String, worker: Worker): Result<Unit> = try {
-        db.collection("workers").document(workerId).set(prepareWorkerForUpdate(workerId, worker)).await()
+        val role = worker.role.ifBlank { resolveRoleFromCategory(worker.category) }
+        val data = hashMapOf<String, Any?>(
+            "fullName"         to worker.fullName,
+            "category"         to worker.category,
+            "role"             to role,
+            "email"            to worker.email,
+            "uid"              to worker.uid.ifBlank { workerId },
+            "dailyWage"        to worker.dailyWage,
+            "totalAdvances"    to worker.totalAdvances,
+            "totalPenalties"   to worker.totalPenalties,
+            "totalPaid"        to worker.totalPaid,
+            "totalEarned"      to worker.totalEarned,
+            "attendanceCount"  to worker.attendanceCount,
+            "currentPresence"  to worker.currentPresence,
+            "lastPresenceDate" to worker.lastPresenceDate,
+            "startDate"        to worker.startDate,
+            "isActive"         to worker.isActive,
+            "updatedAt"        to Timestamp.now(),
+        )
+        db.collection("workers").document(workerId).set(data).await()
         Result.success(Unit)
     } catch (e: Exception) {
         Result.failure(e)
@@ -527,6 +599,7 @@ class FirebaseService {
 
     suspend fun deleteWorker(workerId: String): Result<Unit> = try {
         db.collection("workers").document(workerId).delete().await()
+        logAudit("delete-worker", "workers", workerId)
         Result.success(Unit)
     } catch (e: Exception) {
         Result.failure(e)
@@ -547,6 +620,7 @@ class FirebaseService {
         db.collection("workers").document(workerId)
             .update("totalAdvances", FieldValue.increment(amount))
             .await()
+        logAudit("advance", "advances", docRef.id, mapOf("workerId" to workerId, "amount" to amount, "reason" to reason))
         Result.success(docRef.id)
     } catch (e: Exception) {
         Result.failure(e)
@@ -567,6 +641,7 @@ class FirebaseService {
         db.collection("workers").document(workerId)
             .update("totalPenalties", FieldValue.increment(amount))
             .await()
+        logAudit("penalty", "penalties", docRef.id, mapOf("workerId" to workerId, "amount" to amount, "reason" to reason))
         Result.success(docRef.id)
     } catch (e: Exception) {
         Result.failure(e)
@@ -587,6 +662,7 @@ class FirebaseService {
         db.collection("workers").document(workerId)
             .update("totalPaid", FieldValue.increment(amount))
             .await()
+        logAudit("payment", "payments", docRef.id, mapOf("workerId" to workerId, "amount" to amount, "method" to method))
         Result.success(docRef.id)
     } catch (e: Exception) {
         Result.failure(e)

@@ -66,9 +66,13 @@ import com.example.flamingoandroid.data.models.MenuCategory
 import com.example.flamingoandroid.data.models.MenuItem
 import com.example.flamingoandroid.data.models.OrderCartLine
 import com.example.flamingoandroid.data.models.TableOrder
+import androidx.activity.compose.BackHandler
 import com.example.flamingoandroid.presentation.viewmodels.MenuOrderingViewModel
 import com.example.flamingoandroid.presentation.viewmodels.TablesViewModel
+import com.example.flamingoandroid.presentation.viewmodels.TablesUiState
 import com.example.flamingoandroid.presentation.screens.tables.TablesGridScreen
+import androidx.compose.material3.AlertDialog
+import androidx.compose.ui.window.DialogProperties
 import java.util.Locale
 
 // ── Flamingo design tokens ───────────────────────────────────────────────
@@ -99,8 +103,19 @@ fun TableOrderingActivityContent(
     val isSubmitting   by viewModel.isSubmitting.collectAsState()
     val errorMessage   by viewModel.errorMessage.collectAsState()
     val activeOrderId  by viewModel.activeOrderId.collectAsState()
+    val tablesState    by tablesViewModel.uiState.collectAsState()
+
+    // Adultes/Enfants de la table sélectionnée (depuis les réservations confirmées)
+    val clients: Pair<Int, Int>? = selectedTable?.let { label ->
+        (tablesState as? TablesUiState.Success)?.clientsPerTable?.get(label)
+    }
 
     var tabIndex by remember { mutableStateOf(0) }
+
+    // Retour physique : si une table est sélectionnée → revenir à la grille ; sinon → onExit (dialogue quitter dans l'Activity)
+    BackHandler(enabled = selectedTable != null) {
+        viewModel.clearSelection()
+    }
 
     Box(
         modifier = Modifier
@@ -118,6 +133,7 @@ fun TableOrderingActivityContent(
             TableOrderScreen(
                 tableLabel    = selectedTable!!,
                 serverName    = serverName,
+                clients       = clients,
                 categories    = categories,
                 menuItems     = menuItems,
                 cart          = cart,
@@ -140,11 +156,18 @@ fun TableOrderingActivityContent(
     }
 }
 
+private fun isMainDishCategory(name: String): Boolean {
+    val n = name.lowercase().trim()
+        .replace('é', 'e').replace('è', 'e').replace('ê', 'e').replace('à', 'a')
+    return n.contains("plat")
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TableOrderScreen(
     tableLabel: String,
     serverName: String,
+    clients: Pair<Int, Int>?,          // (adults, children) de la réservation
     categories: List<MenuCategory>,
     menuItems: List<MenuItem>,
     cart: List<OrderCartLine>,
@@ -168,6 +191,63 @@ fun TableOrderScreen(
     val itemsByCategory  = remember(menuItems) { menuItems.groupBy { it.category_id.ifBlank { "__uncategorized__" } } }
     val total = cart.sumOf { it.unit_price * it.quantity }
 
+    // IDs des catégories "plat" (contient "plat" dans le nom)
+    val mainDishCatIds = remember(sortedCategories) {
+        sortedCategories.filter { isMainDishCategory(it.name) }.map { it.id }.toSet()
+    }
+    val maxPersons = clients?.let { it.first + it.second }
+
+    // Dialogue dépassement plats
+    var limitDialogMsg by remember { mutableStateOf<String?>(null) }
+
+    // Wrapper qui vérifie la limite avant d'ajouter
+    val safeAddItem: (MenuItem) -> Unit = { item ->
+        if (item.category_id in mainDishCatIds && maxPersons != null) {
+            val currentTotal = cart
+                .filter { line -> menuItems.firstOrNull { it.id == line.item_id }?.category_id in mainDishCatIds }
+                .sumOf { it.quantity }
+            if (currentTotal >= maxPersons) {
+                limitDialogMsg = "Maximum atteint : $maxPersons plat${if (maxPersons > 1) "s" else ""} pour ${clients!!.first}A + ${clients.second}ENF"
+            } else {
+                onAddItem(item)
+            }
+        } else {
+            onAddItem(item)
+        }
+    }
+
+    val safeQuantityChange: (String, Int) -> Unit = { itemId, newQty ->
+        val item = menuItems.firstOrNull { it.id == itemId }
+        if (item?.category_id in mainDishCatIds && maxPersons != null && newQty > (cart.firstOrNull { it.item_id == itemId }?.quantity ?: 0)) {
+            val currentTotal = cart
+                .filter { line -> menuItems.firstOrNull { it.id == line.item_id }?.category_id in mainDishCatIds }
+                .sumOf { it.quantity }
+            if (currentTotal >= maxPersons) {
+                limitDialogMsg = "Maximum atteint : $maxPersons plat${if (maxPersons > 1) "s" else ""} pour ${clients!!.first}A + ${clients.second}ENF"
+            } else {
+                onQuantityChange(itemId, newQty)
+            }
+        } else {
+            onQuantityChange(itemId, newQty)
+        }
+    }
+
+    // ── Dialogue dépassement plats ───────────────────────────────────────
+    limitDialogMsg?.let { msg ->
+        AlertDialog(
+            onDismissRequest = { limitDialogMsg = null },
+            confirmButton = {
+                TextButton(onClick = { limitDialogMsg = null }) {
+                    Text("OK", color = Amber, fontWeight = FontWeight.Bold)
+                }
+            },
+            title = { Text("Nombre dépassé", color = Pearl, fontWeight = FontWeight.Bold) },
+            text = { Text(msg, color = Mist) },
+            containerColor = Surface,
+            properties = DialogProperties(dismissOnBackPress = true, dismissOnClickOutside = true),
+        )
+    }
+
     Column(
         modifier = modifier.background(Ocean),
     ) {
@@ -175,12 +255,29 @@ fun TableOrderScreen(
         TopAppBar(
             title = {
                 Column {
-                    Text(
-                        text = tableLabel,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = Pearl,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = tableLabel,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Pearl,
+                        )
+                        if (clients != null) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Teal.copy(alpha = 0.18f))
+                                    .padding(horizontal = 8.dp, vertical = 2.dp),
+                            ) {
+                                Text(
+                                    text = "${clients.first}A · ${clients.second}ENF",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Teal,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                        }
+                    }
                     Text(
                         text = "Serveur: $serverName",
                         style = MaterialTheme.typography.labelSmall,
@@ -310,7 +407,7 @@ fun TableOrderScreen(
                 modifier = Modifier.weight(1f),
             ) {
                 items(categoryItems) { item ->
-                    MenuItemCard(item = item, onAddItem = onAddItem)
+                    MenuItemCard(item = item, onAddItem = safeAddItem)
                 }
 
                 if (cart.isNotEmpty()) {
@@ -341,7 +438,7 @@ fun TableOrderScreen(
                     items(cart) { line ->
                         CartLineCard(
                             line = line,
-                            onQuantityChange = onQuantityChange,
+                            onQuantityChange = safeQuantityChange,
                             onNotesChange = onNotesChange,
                             onRemoveItem = onRemoveItem,
                         )

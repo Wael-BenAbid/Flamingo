@@ -47,6 +47,7 @@ import { USER_ROLES, type StaffRole } from '../../shared/constants';
 import { createStaffAccount, generateTemporaryPassword } from '../lib/staffAccounts';
 import { useAuth } from '../context/AuthContext';
 import { db } from '../lib/firebase';
+import { logAudit } from '../lib/auditLogger';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 
 interface Worker extends WorkerType {}
@@ -259,6 +260,10 @@ export default function Workers() {
 
   const handleAdd = async () => {
     if (!newWorker.fullName || newWorker.dailyWage === undefined) return;
+    if ((newWorker.dailyWage ?? 0) < 0) {
+      addToast('Le salaire journalier ne peut pas être négatif', 'warning');
+      return;
+    }
     if (isSubmitting) return;
 
     setIsSubmitting(true);
@@ -285,6 +290,11 @@ export default function Workers() {
           addToast('Mot de passe trop court (minimum 6 caractères) — profil mis à jour sans changement de mot de passe', 'warning');
         }
 
+        logAudit(user, role, 'update-worker', {
+          collection: 'workers',
+          documentId: editingWorkerId,
+          details: { name: newWorker.fullName, category: newWorker.category },
+        });
         addToast('✅ Travailleur mis à jour', 'success');
         setEditingWorkerId(null);
         setAccountPassword('');
@@ -373,6 +383,11 @@ export default function Workers() {
         startDate: format(startOfMonth(new Date()), 'yyyy-MM-dd')
       });
 
+      logAudit(user, role, 'create-worker', {
+        collection: 'workers',
+        documentId: account.uid,
+        details: { name: newWorker.fullName, category: newWorker.category, email: account.email },
+      });
       addToast(`✅ ${newWorker.fullName} créé avec succès`, 'success');
     } catch (error) {
       addToast(error instanceof Error ? error.message : 'Erreur lors de la création/mise à jour', 'error');
@@ -472,6 +487,11 @@ export default function Workers() {
     if (!deleteTarget) return;
     try {
       await remove('workers', deleteTarget.id);
+      logAudit(user, role, 'delete-worker', {
+        collection: 'workers',
+        documentId: deleteTarget.id,
+        details: { name: deleteTarget.fullName },
+      });
       addToast('Travailleur supprimé', 'success');
       setSelectedWorker(null);
       setIsDetailOpen(false);

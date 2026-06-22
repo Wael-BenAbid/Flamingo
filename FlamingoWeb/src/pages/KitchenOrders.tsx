@@ -130,6 +130,7 @@ export default function KitchenOrders() {
   const [menuCategories, setMenuCategories] = useState<MenuCategoryRole[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItemRole[]>([]);
   const [activeTab, setActiveTab] = useState<KitchenTab>('pending');
+  const [statusError, setStatusError] = useState<string | null>(null);
   const todayStart = useRef(getStartOfToday()).current;
 
   useEffect(() => {
@@ -203,6 +204,7 @@ export default function KitchenOrders() {
   }, [filteredOrders]);
 
   const setStatus = async (orderId: string, status: string) => {
+    setStatusError(null);
     try {
       await updateDoc(doc(db, 'table_orders', orderId), {
         status,
@@ -210,12 +212,18 @@ export default function KitchenOrders() {
       });
     } catch (error) {
       console.error('Failed to update order status', error);
-      window.alert('Erreur lors de la mise à jour du statut');
+      setStatusError('Erreur réseau — statut non mis à jour. Réessayez.');
+      setTimeout(() => setStatusError(null), 4000);
     }
   };
 
   return (
     <div className="space-y-6">
+      {statusError && (
+        <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm font-medium text-red-700">
+          {statusError}
+        </div>
+      )}
       <div className="flex flex-col gap-2">
         <h2 className="text-3xl font-serif tracking-tight">{pageTitle}</h2>
         <p className="text-[11px] uppercase tracking-[0.35em] opacity-50 font-bold">

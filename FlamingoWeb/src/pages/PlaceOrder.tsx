@@ -123,6 +123,7 @@ export default function PlaceOrder() {
   const [tableOrders, setTableOrders] = useState<TableOrder[]>([]);
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const [confirmedReservations, setConfirmedReservations] = useState<ConfirmedReservation[]>([]);
+  const [exceedWarning, setExceedWarning] = useState<string | null>(null);
 
   useEffect(() => {
     const setCollectionError = (collectionName: string, error: FirestoreError) => {
@@ -397,16 +398,11 @@ const unsubPositions = subscribe<PositionCategory>('positions', (data) => {
   );
 
 const getTableStatus = (tableLabel: string) => {
-  // Check if there's an active order for this table
-  const activeOrder = tableOrders.find(
-    (order) => order.table_number === tableLabel
-  );
-  
-  if (activeOrder) {
-    return 'pending'; // Has pending order
-  }
-  
-  return 'available'; // Available
+  const activeOrder = tableOrders.find((order) => order.table_number === tableLabel);
+  const hasReservation = reservationByTable.has(tableLabel);
+  if (activeOrder) return 'order';
+  if (hasReservation) return 'reserved';
+  return 'available';
 };
 
   const totalArticles = useMemo(() => {
@@ -468,17 +464,39 @@ const getTableStatus = (tableLabel: string) => {
     }
   };
 
+  // Catégorie "Plats principaux" : limite = nb de personnes de la réservation
+  const platsPrincipauxCatId = useMemo(() => {
+    const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    return visibleCategories.find((c) =>
+      normalize(c.name).includes('plat') || normalize(c.name).includes('principal')
+    )?.id ?? null;
+  }, [visibleCategories]);
+
   const updateQuantity = (itemId: string, delta: number) => {
+    if (delta > 0 && platsPrincipauxCatId) {
+      const item = itemLookup.get(itemId);
+      if (item?.categoryId === platsPrincipauxCatId) {
+        const reservation = selectedTable ? reservationByTable.get(selectedTable) : null;
+        const maxPersons = reservation ? reservation.adults + reservation.children : null;
+        if (maxPersons !== null) {
+          const currentCatTotal = Object.entries(cart).reduce((sum, [id, qty]) => {
+            const cartItem = itemLookup.get(id);
+            return cartItem?.categoryId === platsPrincipauxCatId ? sum + normalizeNumber(qty) : sum;
+          }, 0);
+          if (currentCatTotal + delta > maxPersons) {
+            setExceedWarning(
+              `Maximum atteint : ${maxPersons} plat${maxPersons > 1 ? 's' : ''} principal${maxPersons > 1 ? 'x' : ''} pour ${maxPersons} personne${maxPersons > 1 ? 's' : ''}`
+            );
+            return;
+          }
+        }
+      }
+    }
     setCart((current) => {
       const next = { ...current };
       const currentQuantity = normalizeNumber(next[itemId]);
       const newQuantity = currentQuantity + delta;
-
-      if (newQuantity <= 0) {
-        delete next[itemId];
-        return next;
-      }
-
+      if (newQuantity <= 0) { delete next[itemId]; return next; }
       next[itemId] = newQuantity;
       return next;
     });
@@ -585,10 +603,15 @@ const getTableStatus = (tableLabel: string) => {
 
                      const getButtonVariants = (status: string) => {
                        switch (status) {
-                         case 'pending':
+                         case 'order':
                            return {
                              base: 'border-yellow-400 bg-yellow-50 text-yellow-900 hover:border-yellow-300 hover:bg-yellow-100',
                              selected: 'border-yellow-500 bg-yellow-100 text-yellow-800 shadow-[0_10px_24px_rgba(245,158,11,0.18)]'
+                           };
+                         case 'reserved':
+                           return {
+                             base: 'border-teal-400 bg-teal-50 text-teal-900 hover:border-teal-300 hover:bg-teal-100',
+                             selected: 'border-teal-500 bg-teal-500 text-white shadow-[0_10px_24px_rgba(46,196,182,0.25)]'
                            };
                          case 'available':
                          default:
@@ -650,10 +673,15 @@ const getTableStatus = (tableLabel: string) => {
 
                      const getButtonVariants = (status: string) => {
                        switch (status) {
-                         case 'pending':
+                         case 'order':
                            return {
                              base: 'border-yellow-400 bg-yellow-50 text-yellow-900 hover:border-yellow-300 hover:bg-yellow-100',
                              selected: 'border-yellow-500 bg-yellow-100 text-yellow-800 shadow-[0_10px_24px_rgba(245,158,11,0.18)]'
+                           };
+                         case 'reserved':
+                           return {
+                             base: 'border-teal-400 bg-teal-50 text-teal-900 hover:border-teal-300 hover:bg-teal-100',
+                             selected: 'border-teal-500 bg-teal-500 text-white shadow-[0_10px_24px_rgba(46,196,182,0.25)]'
                            };
                          case 'available':
                          default:
@@ -866,6 +894,26 @@ const getTableStatus = (tableLabel: string) => {
           </div>
         </section>
       </div>
+
+      {/* ── Avertissement plats principaux ── */}
+      {exceedWarning && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-2xl p-6 max-w-sm w-full mx-4 text-center space-y-4">
+            <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto">
+              <span className="text-red-600 text-xl font-bold">!</span>
+            </div>
+            <p className="font-bold text-slate-900">Nombre dépassé</p>
+            <p className="text-sm text-slate-600">{exceedWarning}</p>
+            <button
+              type="button"
+              onClick={() => setExceedWarning(null)}
+              className="w-full h-10 bg-flamingo text-white text-sm font-bold rounded-lg hover:bg-flamingo/90 transition-colors"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
 
       <footer className="space-y-4 rounded-sm border border-black/5 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">

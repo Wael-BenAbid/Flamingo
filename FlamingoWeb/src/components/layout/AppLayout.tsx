@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -14,7 +14,8 @@ import {
   ChevronDown,
   UtensilsCrossed,
   Table2,
-  CreditCard
+  CreditCard,
+  ClipboardList,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -26,6 +27,18 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const { role, logout, user, cachedPhotoURL } = useAuth();
   const navigate = useNavigate();
   const [profileOpen, setProfileOpen] = useState(false);
+  const [showQuitDialog, setShowQuitDialog] = useState(false);
+
+  // Intercept browser back button — push a dummy state so back triggers popstate
+  useEffect(() => {
+    window.history.pushState(null, '', window.location.href);
+    const handlePopState = () => {
+      window.history.pushState(null, '', window.location.href);
+      setShowQuitDialog(true);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   const handleLogout = async () => {
     await logout();
@@ -43,6 +56,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     { label: 'Gestion Stock', icon: Package, path: '/stock', feature: 'stock' as StaffFeature },
     { label: 'Menus & Tables', icon: UtensilsCrossed, path: '/menu-tables', feature: 'menuTables' as StaffFeature },
     { label: 'Bilan Journalier', icon: FileBarChart, path: '/reports', feature: 'reports' as StaffFeature },
+    { label: 'Journal Activité', icon: ClipboardList, path: '/audit', feature: 'auditLog' as StaffFeature },
   ];
 
   const filteredNavItems = navItems.filter(item =>
@@ -182,6 +196,31 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           ))}
         </nav>
       </main>
+      {/* ── Dialogue quitter ── */}
+      {showQuitDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-xs w-full mx-4 text-center space-y-4">
+            <p className="font-bold text-lg text-slate-900">Quitter l'application ?</p>
+            <p className="text-sm text-slate-500">Vous allez être déconnecté.</p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowQuitDialog(false)}
+                className="flex-1 h-11 rounded-xl border border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition-colors"
+              >
+                Rester
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowQuitDialog(false); handleLogout(); }}
+                className="flex-1 h-11 rounded-xl bg-red-500 text-white font-semibold text-sm hover:bg-red-600 transition-colors"
+              >
+                Quitter
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

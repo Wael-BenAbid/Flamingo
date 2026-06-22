@@ -22,6 +22,7 @@ import com.google.firebase.auth.FirebaseAuthInvalidUserException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 // Role → destination mapping:
 //   cuisine            → KitchenDashboardActivity (direct kitchen view)
@@ -110,22 +111,39 @@ class AdminLoginActivity : AppCompatActivity() {
             return
         }
 
+        // Si l'email est admin, naviguer directement sans aucune requête Firestore
+        if (firebaseService.isAdminEmail(currentUser.email)) {
+            navigateToRoleHome("admin")
+            return
+        }
+
         setLoading(true)
         setStatus(getString(R.string.admin_login_checking), false)
 
         lifecycleScope.launch {
-            // Existing session: use cached token (no forceRefresh) to avoid extra network call.
-            val currentRole = withContext(Dispatchers.IO) {
-                firebaseService.getCurrentUserRole(currentUser, forceRefresh = false)
+            // Timeout 10s pour éviter un blocage infini si Firestore est injoignable
+            val currentRole = withTimeoutOrNull(10_000L) {
+                withContext(Dispatchers.IO) {
+                    firebaseService.getCurrentUserRole(currentUser, forceRefresh = false)
+                }
             }
 
-            if (!currentRole.isNullOrBlank() && currentRole != StaffAccess.ROLE_NONE) {
-                navigateToRoleHome(currentRole)
-            } else {
-                firebaseService.signOut()
-                googleSignInClient.signOut()
-                setLoading(false)
-                setStatus(getString(R.string.admin_login_not_authorized), true)
+            when {
+                !currentRole.isNullOrBlank() && currentRole != StaffAccess.ROLE_NONE -> {
+                    navigateToRoleHome(currentRole)
+                }
+                currentRole == null -> {
+                    // Timeout ou erreur réseau — ne pas déconnecter, laisser réessayer
+                    setLoading(false)
+                    setStatus("Connexion lente — réessayez ou vérifiez le réseau", true)
+                }
+                else -> {
+                    // Rôle vide ou none → compte non autorisé
+                    firebaseService.signOut()
+                    googleSignInClient.signOut()
+                    setLoading(false)
+                    setStatus(getString(R.string.admin_login_not_authorized), true)
+                }
             }
         }
     }

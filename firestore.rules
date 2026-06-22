@@ -15,6 +15,7 @@ service cloud.firestore {
         request.auth.token.email == 'waelbenabid1@gmail.com' ||
         request.auth.token.email == 'abidos.games@gmail.com' ||
         request.auth.token.email == 'admin@gmail.com' ||
+        request.auth.token.email == 'm.aminejaouani@gmail.com' ||
         // Admins dynamiques via collection Firestore "admins/{uid}"
         request.auth.token.role == 'admin' ||
         exists(/databases/$(database)/documents/admins/$(request.auth.uid))
@@ -188,11 +189,15 @@ service cloud.firestore {
       allow list: if isSignedIn() && (isAdmin() || isEmployee());
       allow create: if (isAdmin() || isEmployee()) && isValidReservation(incoming());
       allow update: if (isAdmin() || isEmployee()) && (
-        (isAdmin() && isValidReservation(incoming())) ||
+        // Admin : mise à jour complète (avec ou sans validation stricte)
+        isAdmin() ||
         (isResponsable() && incoming().diff(existing()).affectedKeys().hasOnly(
           ['status', 'positionType', 'positionNumber', 'checkIn', 'notes', 'updatedAt', 'grandTotal', 'paidAt']
         )) ||
-        (isEmployee() && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'notes', 'updatedAt']))
+        (isEmployee() && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'notes', 'updatedAt'])) ||
+        // Paiement : mise à jour financière uniquement
+        incoming().diff(existing()).affectedKeys().hasOnly(['paidAt', 'grandTotal']) ||
+        incoming().diff(existing()).affectedKeys().hasOnly(['paidAt', 'grandTotal', 'updatedAt'])
       );
       allow delete: if isAdmin();
     }
@@ -326,9 +331,20 @@ service cloud.firestore {
       allow list: if isSignedIn();
       allow create: if isSignedIn() && (isValidTableOrder(incoming()) || isValidWalkInOrder(incoming()));
       allow update: if isSignedIn() && (
-        (isAdmin() && isValidTableOrder(incoming())) ||
+        // Admin : mise à jour libre sans validation stricte (walk-in, server_id vide, etc.)
+        isAdmin() ||
+        isResponsable() ||
+        // Changement de statut seul (cuisine/bar)
         incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updated_at']) ||
-        incoming().diff(existing()).affectedKeys().hasOnly(['items', 'total_price', 'updated_at'])
+        // Modification des articles
+        incoming().diff(existing()).affectedKeys().hasOnly(['items', 'total_price', 'updated_at']) ||
+        // Paiement : status + champs financiers (Android & Web payment flow)
+        incoming().diff(existing()).affectedKeys().hasOnly(
+          ['status', 'paidAt', 'grandTotal', 'discountPercent', 'discountAmount', 'remarque']
+        ) ||
+        incoming().diff(existing()).affectedKeys().hasOnly(
+          ['status', 'paidAt', 'grandTotal', 'discountPercent', 'discountAmount', 'remarque', 'updated_at']
+        )
       );
       allow delete: if isAdmin();
     }

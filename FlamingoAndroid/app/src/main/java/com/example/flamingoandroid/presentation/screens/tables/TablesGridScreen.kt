@@ -47,15 +47,16 @@ import com.example.flamingoandroid.data.models.Position
 import com.example.flamingoandroid.presentation.viewmodels.TablesUiState
 import com.example.flamingoandroid.presentation.viewmodels.TablesViewModel
 
-private val Amber   = Color(0xFFF59B35)
-private val Coral   = Color(0xFFE8603A)
-private val Teal    = Color(0xFF2EC4B6)
-private val Ocean   = Color(0xFF0B1628)
-private val Surface = Color(0xFF13203A)
-private val Raised  = Color(0xFF1C2E4A)
-private val Outline = Color(0xFF2E4560)
-private val Pearl   = Color(0xFFF0EEE8)
-private val Mist    = Color(0xFF9DB4C0)
+private val Amber    = Color(0xFFF59B35)
+private val Coral    = Color(0xFFE8603A)
+private val Teal     = Color(0xFF2EC4B6)
+private val Flamingo = Color(0xFFFF7A85)
+private val Ocean    = Color(0xFF0B1628)
+private val Surface  = Color(0xFF13203A)
+private val Raised   = Color(0xFF1C2E4A)
+private val Outline  = Color(0xFF2E4560)
+private val Pearl    = Color(0xFFF0EEE8)
+private val Mist     = Color(0xFF9DB4C0)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -88,7 +89,7 @@ fun TablesGridScreen(
                             color = Pearl,
                         )
                         Text(
-                            text = "Océan Flamingo",
+                            text = "Flamingo",
                             style = MaterialTheme.typography.labelSmall,
                             color = Mist,
                             letterSpacing = 2.sp,
@@ -240,10 +241,14 @@ private fun PositionSectionCard(
             }
 
             // Status legend
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                StatusLegendDot(color = Teal,  label = "Libre")
-                StatusLegendDot(color = Amber, label = "En attente")
-                StatusLegendDot(color = Coral, label = "En cuisine")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                StatusLegendDot(color = Teal,     label = "Libre")
+                StatusLegendDot(color = Flamingo, label = "Réservé")
+                StatusLegendDot(color = Amber,    label = "Attente")
+                StatusLegendDot(color = Coral,    label = "Cuisine")
             }
         }
     }
@@ -271,11 +276,13 @@ private fun TableTile(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
-    val (containerColor, borderColor, statusText, textColor) = when (status) {
-        "pending"   -> TableTileStyle(Amber.copy(alpha = 0.18f),  Amber,  "En attente", Amber)
-        "preparing" -> TableTileStyle(Coral.copy(alpha = 0.18f),  Coral,  "En cuisine", Coral)
-        "ready"     -> TableTileStyle(Teal.copy(alpha = 0.18f),   Teal,   "Prête",      Teal)
-        else        -> TableTileStyle(Teal.copy(alpha = 0.10f),   Outline,"Libre",      Teal)
+    val hasReservation = clients != null
+    val (containerColor, borderColor, statusText, textColor) = when {
+        status == "pending"   -> TableTileStyle(Amber.copy(alpha = 0.18f),    Amber,    "En attente", Amber)
+        status == "preparing" -> TableTileStyle(Coral.copy(alpha = 0.18f),    Coral,    "En cuisine", Coral)
+        status == "ready"     -> TableTileStyle(Teal.copy(alpha = 0.18f),     Teal,     "Prête",      Teal)
+        hasReservation        -> TableTileStyle(Flamingo.copy(alpha = 0.22f), Flamingo, "Réservé",    Flamingo)
+        else                  -> TableTileStyle(Teal.copy(alpha = 0.10f),     Outline,  "Libre",      Teal)
     }
 
     Box(

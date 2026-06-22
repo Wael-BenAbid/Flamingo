@@ -7,6 +7,7 @@ enum FlamingoConfig {
     static let adminEmails: [String] = [
         "waelbenabid1@gmail.com",
         "abidos.games@gmail.com",
+        "admin@gmail.com",
     ]
 
     static func isAdminEmail(_ email: String) -> Bool {

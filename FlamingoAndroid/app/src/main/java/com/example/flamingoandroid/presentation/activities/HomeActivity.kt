@@ -14,6 +14,7 @@ import com.example.flamingoandroid.databinding.ActivityHomeBinding
 import com.example.flamingoandroid.presentation.fragments.DashboardFragment
 import com.example.flamingoandroid.presentation.fragments.DailyCheckFragment
 import com.example.flamingoandroid.presentation.fragments.InventoryFragment
+import com.example.flamingoandroid.presentation.fragments.DailyOrdersFragment
 import com.example.flamingoandroid.presentation.fragments.KitchenOrdersFragment
 import com.example.flamingoandroid.presentation.fragments.ReportsFragment
 import com.example.flamingoandroid.presentation.fragments.ReservationsFragment
@@ -88,6 +89,7 @@ class HomeActivity : AppCompatActivity() {
                 )
                 R.id.nav_payment -> startActivity(Intent(this, PaymentActivity::class.java))
                 R.id.nav_kitchen_orders -> openSection(AdminSection.KITCHEN_ORDERS)
+                R.id.nav_daily_orders -> openSection(AdminSection.DAILY_ORDERS)
                 R.id.nav_reports -> openSection(AdminSection.REPORTS)
                 R.id.nav_settings -> openSection(AdminSection.SETTINGS)
                 R.id.nav_logout -> logout()
@@ -115,6 +117,7 @@ class HomeActivity : AppCompatActivity() {
             val canViewPayment    = StaffAccess.hasFeature(role, StaffAccess.FEATURE_PAYMENT)
             val canViewKitchenOrders = StaffAccess.hasFeature(role, StaffAccess.FEATURE_KITCHEN_ORDERS)
             val canViewReports = StaffAccess.hasFeature(role, StaffAccess.FEATURE_REPORTS)
+            val canViewDailyOrders = StaffAccess.hasFeature(role, StaffAccess.FEATURE_DAILY_ORDERS)
             val canViewSettings = StaffAccess.hasFeature(role, StaffAccess.FEATURE_MENU_TABLES) || StaffAccess.hasFeature(role, StaffAccess.FEATURE_SETTINGS)
 
             menu.findItem(R.id.nav_dashboard)?.isVisible = canViewDashboard
@@ -125,6 +128,7 @@ class HomeActivity : AppCompatActivity() {
             menu.findItem(R.id.nav_menu_orders)?.isVisible = canViewMenuOrders
             menu.findItem(R.id.nav_payment)?.isVisible = canViewPayment
             menu.findItem(R.id.nav_kitchen_orders)?.isVisible = canViewKitchenOrders
+            menu.findItem(R.id.nav_daily_orders)?.isVisible = canViewDailyOrders
             menu.findItem(R.id.nav_reports)?.isVisible = canViewReports
             menu.findItem(R.id.nav_settings)?.isVisible = canViewSettings
 
@@ -138,6 +142,7 @@ class HomeActivity : AppCompatActivity() {
                     AdminSection.WORKERS -> R.id.nav_workers
                     AdminSection.INVENTORY -> R.id.nav_inventory
                     AdminSection.REPORTS -> R.id.nav_reports
+                    AdminSection.DAILY_ORDERS -> R.id.nav_daily_orders
                     AdminSection.SETTINGS -> R.id.nav_settings
                     AdminSection.KITCHEN_ORDERS -> R.id.nav_kitchen_orders
                 }
@@ -163,6 +168,7 @@ class HomeActivity : AppCompatActivity() {
             AdminSection.WORKERS -> WorkersFragment()
             AdminSection.INVENTORY -> InventoryFragment()
             AdminSection.REPORTS -> ReportsFragment()
+            AdminSection.DAILY_ORDERS -> DailyOrdersFragment()
             AdminSection.SETTINGS -> SettingsFragment()
             AdminSection.KITCHEN_ORDERS -> KitchenOrdersFragment()
         }
@@ -187,6 +193,7 @@ class HomeActivity : AppCompatActivity() {
             AdminSection.WORKERS -> "Travailleurs"
             AdminSection.INVENTORY -> "Gestion Stock"
             AdminSection.REPORTS -> "Bilans Journaliers"
+            AdminSection.DAILY_ORDERS -> "Commandes du Jour"
             AdminSection.SETTINGS -> "Menus & Tables"
             AdminSection.KITCHEN_ORDERS -> "Commandes Cuisine"
         }

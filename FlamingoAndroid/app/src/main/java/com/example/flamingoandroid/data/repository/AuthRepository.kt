@@ -26,10 +26,11 @@ class AuthRepository {
     private val db   = FirebaseFirestore.getInstance()
 
     companion object {
-        // Mirrors ADMIN_EMAILS in shared/constants.ts and OceanConfig.swift.
+        // Mirrors ADMIN_EMAILS in shared/constants.ts
         val ADMIN_EMAILS: Set<String> = setOf(
             "waelbenabid1@gmail.com",
-            "abidos.games@gmail.com"
+            "abidos.games@gmail.com",
+            "admin@gmail.com"
         )
     }
 
@@ -77,13 +78,17 @@ class AuthRepository {
     } catch (_: Exception) { null }
 
     private suspend fun getRoleFromFirestore(user: FirebaseUser): String? = try {
-        val byUid = db.collection("workers").whereEqualTo("uid", user.uid)
-            .limit(1).get().await().documents.firstOrNull()
-        val doc = byUid ?: user.email?.let { email ->
-            db.collection("workers").whereEqualTo("email", email.trim())
-                .limit(1).get().await().documents.firstOrNull()
+        // GET par UID (pas LIST) : la règle Firestore autorise le propriétaire à lire son propre doc.
+        val byUidDoc = db.collection("workers").document(user.uid).get().await()
+        if (byUidDoc.exists()) {
+            normalizeRole(byUidDoc.getString("role") ?: byUidDoc.getString("category"))
+        } else {
+            user.email?.let { email ->
+                db.collection("workers").whereEqualTo("email", email.trim())
+                    .limit(1).get().await().documents.firstOrNull()
+                    ?.let { normalizeRole(it.getString("role") ?: it.getString("category")) }
+            }
         }
-        doc?.let { normalizeRole(it.getString("role") ?: it.getString("category")) }
     } catch (_: Exception) { null }
 
     // ── STAFF ACCOUNT CREATION ─────────────────────────────────────────

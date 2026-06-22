@@ -87,6 +87,8 @@ fun PaymentScreen(
             }
             is PaymentAction.Error -> {
                 snackbarHostState.showSnackbar("Erreur : ${a.message}")
+                invoiceTable = null
+                showWalkIn = false
                 viewModel.clearAction()
             }
             null -> Unit
@@ -691,6 +693,7 @@ private fun InvoiceDialog(
                             val html = buildReceiptHtml(
                                 tableLabel      = tableLabel,
                                 clientName      = clientName,
+                                serverName      = order?.server_name.orEmpty(),
                                 adults          = adults,
                                 children        = children,
                                 adultUnitPrice  = adultUnitPrice,
@@ -779,6 +782,7 @@ private fun printHtml(context: Context, html: String, jobName: String) {
 private fun buildReceiptHtml(
     tableLabel: String,
     clientName: String,
+    serverName: String = "",
     adults: Int,
     children: Int,
     adultUnitPrice: Double,
@@ -875,7 +879,7 @@ private fun buildReceiptHtml(
     // CLIENT ticket — consommation only + discount + total
     val clientTicket = """
 <div class="ticket">
-  <div class="center bold xl">OCÉAN EL BOUNTA</div>
+  <div class="center bold xl">FLAMINGO COUCOU BEACH</div>
   <div class="center sub">Beach Club &amp; Restaurant</div>
   <div class="copy-label">── COPIE CLIENT ──</div>
   <div class="sep">$SEP</div>
@@ -900,7 +904,7 @@ private fun buildReceiptHtml(
     // RESTO ticket — full details
     val restoTicket = """
 <div class="ticket" style="page-break-before:always;">
-  <div class="center bold xl">OCÉAN EL BOUNTA</div>
+  <div class="center bold xl">FLAMINGO COUCOU BEACH</div>
   <div class="center sub">Beach Club &amp; Restaurant</div>
   <div class="copy-label copy-dark">── COPIE ÉTABLISSEMENT ──</div>
   <div class="sep">$SEP</div>
@@ -908,6 +912,7 @@ private fun buildReceiptHtml(
   ${row("Heure :", timeStr)}
   ${row("Table :", "<strong>$tableLabel</strong>")}
   ${if (clientName != "—") row("Client :", clientName) else ""}
+  ${if (serverName.isNotBlank()) row("Serveur :", "<strong>$serverName</strong>") else ""}
   <div class="sep" style="margin:2mm 0">$SEP</div>
   $resHtml
   $itemsHtml
@@ -1374,6 +1379,7 @@ private fun WalkInDialog(
                                 val html = buildReceiptHtml(
                                     tableLabel       = tableLabel,
                                     clientName       = clientName.ifBlank { "—" },
+                                    serverName       = "",
                                     adults           = adults,
                                     children         = children,
                                     adultUnitPrice   = adultPrice,

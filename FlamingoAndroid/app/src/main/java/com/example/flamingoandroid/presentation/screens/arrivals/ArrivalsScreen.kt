@@ -63,6 +63,14 @@ fun ArrivalsScreen(viewModel: ArrivalsViewModel) {
     // Confirmation dialog state
     var confirmingReservation by remember { mutableStateOf<Reservation?>(null) }
 
+    // Positions occupées par les réservations déjà confirmées : type → set de numéros
+    val occupiedPerType = remember(confirmed) {
+        confirmed
+            .filter { !it.positionNumber.isNullOrBlank() }
+            .groupBy { it.positionType.trim() }
+            .mapValues { (_, list) -> list.mapNotNull { it.positionNumber?.trim() }.toSet() }
+    }
+
     val today = remember {
         SimpleDateFormat("EEEE d MMMM yyyy", Locale.FRANCE).format(Date())
             .replaceFirstChar { it.uppercase() }
@@ -182,11 +190,16 @@ fun ArrivalsScreen(viewModel: ArrivalsViewModel) {
                     }
                 } else {
                     items(filteredPending, key = { it.id }) { reservation ->
+                        val posType = reservation.positionType.trim()
+                        val totalCount = positions.firstOrNull { it.type.equals(posType, ignoreCase = true) }?.count ?: 0
+                        val occupiedCount = occupiedPerType[posType]?.size ?: 0
+                        val isPositionFull = posType.isNotBlank() && totalCount > 0 && occupiedCount >= totalCount
                         PendingArrivalCard(
-                            reservation = reservation,
-                            onConfirm   = { confirmingReservation = reservation },
-                            onAbsent    = { viewModel.markAbsent(reservation.id) },
-                            onCancel    = { viewModel.cancelArrival(reservation.id) },
+                            reservation    = reservation,
+                            isPositionFull = isPositionFull,
+                            onConfirm      = { confirmingReservation = reservation },
+                            onAbsent       = { viewModel.markAbsent(reservation.id) },
+                            onCancel       = { viewModel.cancelArrival(reservation.id) },
                         )
                     }
                 }
@@ -255,9 +268,10 @@ fun ArrivalsScreen(viewModel: ArrivalsViewModel) {
     // ── Confirmation dialog ─────────────────────────────────────────────
     confirmingReservation?.let { res ->
         ConfirmArrivalDialog(
-            reservation = res,
-            positions   = positions,
-            onConfirm   = { posType, posNum ->
+            reservation     = res,
+            positions       = positions,
+            occupiedPerType = occupiedPerType,
+            onConfirm       = { posType, posNum ->
                 viewModel.confirmArrival(res.id, posType, posNum)
                 confirmingReservation = null
             },
@@ -303,6 +317,7 @@ private fun SectionHeader(label: String, count: Int, color: Color) {
 @Composable
 private fun PendingArrivalCard(
     reservation: Reservation,
+    isPositionFull: Boolean = false,
     onConfirm: () -> Unit,
     onAbsent: () -> Unit,
     onCancel: () -> Unit,
@@ -315,13 +330,14 @@ private fun PendingArrivalCard(
     }
 
     val missingPos = reservation.positionNumber.isNullOrBlank()
+    val needsAttention = missingPos || isPositionFull
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Surface),
         border = androidx.compose.foundation.BorderStroke(
-            if (missingPos) 2.dp else 1.dp,
-            if (missingPos) Crimson else Outline,
+            if (needsAttention) 2.dp else 1.dp,
+            if (needsAttention) Crimson else Outline,
         ),
     ) {
         Column(
@@ -531,27 +547,40 @@ private fun CancelledArrivalCard(
 private fun ConfirmArrivalDialog(
     reservation: Reservation,
     positions: List<Position>,
+    occupiedPerType: Map<String, Set<String>>,
     onConfirm: (posType: String, posNum: String) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val name = "${reservation.firstName} ${reservation.lastName}".trim().ifBlank { "Client" }
 
-    // Pre-fill from existing reservation fields if set
-    var selectedPosition by remember {
-        mutableStateOf(
-            positions.firstOrNull { it.type.equals(reservation.positionType, ignoreCase = true) }
-                ?: positions.firstOrNull()
-        )
+    fun firstFreeNumber(pos: Position?): String {
+        if (pos == null) return "1"
+        val occupied = occupiedPerType[pos.type.trim()] ?: emptySet()
+        return (1..pos.count.coerceAtLeast(1)).map { it.toString() }
+            .firstOrNull { it !in occupied } ?: "COMPLET"
     }
-    var selectedNumber by remember {
-        mutableStateOf(reservation.positionNumber?.takeIf { it.isNotBlank() } ?: "1")
-    }
+
+    val initialPos = positions.firstOrNull { it.type.equals(reservation.positionType, ignoreCase = true) }
+        ?: positions.firstOrNull()
+
+    var selectedPosition by remember { mutableStateOf(initialPos) }
+    var selectedNumber   by remember { mutableStateOf(firstFreeNumber(initialPos)) }
 
     var typeDropdownExpanded by remember { mutableStateOf(false) }
-    var numDropdownExpanded  by remember { mutableStateOf(false) }
 
-    val availableNumbers = remember(selectedPosition) {
+    val allNumbers = remember(selectedPosition) {
         (1..(selectedPosition?.count?.coerceAtLeast(1) ?: 1)).map { it.toString() }
+    }
+    val occupiedNumbers = remember(selectedPosition, occupiedPerType) {
+        occupiedPerType[selectedPosition?.type?.trim()] ?: emptySet()
+    }
+    val allOccupied = allNumbers.isNotEmpty() && allNumbers.all { it in occupiedNumbers }
+
+    // Si le numéro sélectionné est occupé (ou la liste a changé), auto-sélectionner le premier libre
+    androidx.compose.runtime.LaunchedEffect(occupiedNumbers) {
+        if (selectedNumber in occupiedNumbers || selectedNumber == "COMPLET") {
+            selectedNumber = allNumbers.firstOrNull { it !in occupiedNumbers } ?: "COMPLET"
+        }
     }
 
     Dialog(onDismissRequest = onDismiss) {
@@ -626,17 +655,22 @@ private fun ConfirmArrivalDialog(
                                 modifier = Modifier.background(Raised),
                             ) {
                                 positions.forEach { pos ->
+                                    val occ = occupiedPerType[pos.type.trim()] ?: emptySet()
+                                    val full = occ.size >= pos.count
                                     DropdownMenuItem(
                                         text = {
                                             Text(
-                                                "${pos.type}  (${pos.count} places)",
-                                                color = Pearl,
+                                                buildString {
+                                                    append("${pos.type}  (${pos.count} places)")
+                                                    if (full) append("  — COMPLET")
+                                                },
+                                                color = if (full) Crimson else Pearl,
                                                 style = MaterialTheme.typography.bodyMedium,
                                             )
                                         },
                                         onClick = {
                                             selectedPosition = pos
-                                            selectedNumber = "1"
+                                            selectedNumber = firstFreeNumber(pos)
                                             typeDropdownExpanded = false
                                         },
                                     )
@@ -646,60 +680,97 @@ private fun ConfirmArrivalDialog(
                     }
                 }
 
-                // Position number dropdown
+                // Position number — grille visuelle
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(
-                        text = "N° DE POSITION",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Mist,
-                        letterSpacing = 1.5.sp,
-                    )
-                    ExposedDropdownMenuBox(
-                        expanded = numDropdownExpanded,
-                        onExpandedChange = { numDropdownExpanded = it },
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        OutlinedTextField(
-                            value = selectedNumber,
-                            onValueChange = {},
-                            readOnly = true,
-                            trailingIcon = {
-                                Icon(Icons.Default.ArrowDropDown, null, tint = Mist)
-                            },
+                        Text(
+                            text = "N° DE POSITION",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Mist,
+                            letterSpacing = 1.5.sp,
+                        )
+                        if (occupiedNumbers.isNotEmpty()) {
+                            Text(
+                                text = "■ = occupé",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Mist.copy(alpha = 0.6f),
+                                fontSize = 9.sp,
+                            )
+                        }
+                    }
+
+                    if (allOccupied) {
+                        Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .menuAnchor(),
-                            shape = RoundedCornerShape(10.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor   = Amber,
-                                unfocusedBorderColor = Outline,
-                                focusedTextColor     = Pearl,
-                                unfocusedTextColor   = Pearl,
-                                focusedContainerColor   = Raised,
-                                unfocusedContainerColor = Raised,
-                            ),
-                        )
-                        ExposedDropdownMenu(
-                            expanded = numDropdownExpanded,
-                            onDismissRequest = { numDropdownExpanded = false },
-                            modifier = Modifier.background(Raised),
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Crimson.copy(alpha = 0.12f))
+                                .padding(12.dp),
+                            contentAlignment = Alignment.Center,
                         ) {
-                            availableNumbers.forEach { num ->
-                                DropdownMenuItem(
-                                    text = {
+                            Text(
+                                text = "Toutes les places sont occupées — choisir un autre type",
+                                color = Crimson,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.SemiBold,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            )
+                        }
+                    } else {
+                        allNumbers.chunked(5).forEach { rowNums ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                rowNums.forEach { num ->
+                                    val isOccupied = num in occupiedNumbers
+                                    val isSelected = selectedNumber == num
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(44.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(
+                                                when {
+                                                    isOccupied -> Color(0xFF111111)
+                                                    isSelected -> Amber
+                                                    else       -> Raised
+                                                }
+                                            )
+                                            .border(
+                                                1.dp,
+                                                when {
+                                                    isOccupied -> Color(0xFF333333)
+                                                    isSelected -> Amber
+                                                    else       -> Outline
+                                                },
+                                                RoundedCornerShape(8.dp),
+                                            )
+                                            .clickable(enabled = !isOccupied) { selectedNumber = num },
+                                        contentAlignment = Alignment.Center,
+                                    ) {
                                         Text(
-                                            "N° $num",
-                                            color = Pearl,
-                                            style = MaterialTheme.typography.bodyMedium,
+                                            text = num,
+                                            color = when {
+                                                isOccupied -> Color(0xFF444444)
+                                                isSelected -> Ocean
+                                                else       -> Pearl
+                                            },
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.sp,
                                         )
-                                    },
-                                    onClick = {
-                                        selectedNumber = num
-                                        numDropdownExpanded = false
-                                    },
-                                )
+                                    }
+                                }
+                                // Remplir les cases vides si la ligne < 5
+                                repeat(5 - rowNums.size) { Spacer(modifier = Modifier.weight(1f)) }
                             }
                         }
                     }
+
                 }
 
                 // Buttons
@@ -724,7 +795,9 @@ private fun ConfirmArrivalDialog(
                         },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(10.dp),
-                        enabled = selectedPosition != null,
+                        enabled = selectedPosition != null && !allOccupied
+                            && selectedNumber !in occupiedNumbers
+                            && selectedNumber != "COMPLET",
                         colors = ButtonDefaults.buttonColors(containerColor = Teal),
                     ) {
                         Text("Confirmer", color = Ocean, fontWeight = FontWeight.Bold)

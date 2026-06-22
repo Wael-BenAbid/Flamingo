@@ -7,6 +7,7 @@ enum class AdminSection {
     WORKERS,
     INVENTORY,
     REPORTS,
+    DAILY_ORDERS,
     SETTINGS,
     KITCHEN_ORDERS
 }

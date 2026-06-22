@@ -51,16 +51,21 @@ export type StaffFeature =
   | 'menuTables'
   | 'kitchenOrders'
   | 'placeOrder'
-  | 'payment';
+  | 'payment'
+  | 'auditLog';
 
 export const STAFF_FEATURE_ACCESS: Record<StaffRole, StaffFeature[]> = {
-  admin:       ['dashboard', 'reservations', 'arrivals', 'workers', 'stock', 'reports', 'settings', 'menuTables', 'kitchenOrders', 'placeOrder', 'payment'],
-  responsable: ['dashboard', 'reservations', 'arrivals', 'workers', 'stock', 'settings', 'menuTables', 'kitchenOrders', 'placeOrder', 'payment'],
+  admin:       ['dashboard', 'reservations', 'arrivals', 'workers', 'stock', 'reports', 'settings', 'menuTables', 'kitchenOrders', 'placeOrder', 'payment', 'auditLog'],
+  responsable: ['dashboard', 'reservations', 'arrivals', 'workers', 'stock', 'settings', 'menuTables', 'kitchenOrders', 'placeOrder', 'payment', 'auditLog'],
   cuisinier:   ['kitchenOrders'],
   barman:      ['kitchenOrders'],
   serveur:     ['placeOrder'],
   none:        [],
 };
+
+export const FIRESTORE_COLLECTIONS_AUDIT = {
+  AUDIT_LOGS: 'audit_logs',
+} as const;
 
 // 'all' = access to every category; [] = no stock access
 export const STOCK_CATEGORY_ACCESS: Record<StaffRole, string[] | 'all'> = {
@@ -107,6 +112,7 @@ export const ADMIN_EMAILS = [
   'waelbenabid1@gmail.com',
   'abidos.games@gmail.com',
   'admin@gmail.com',
+  'm.aminejaouani@gmail.com',
 ] as const;
 
 /**

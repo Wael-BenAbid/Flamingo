@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useFirestore } from '../hooks/useFirestore';
 import { useAuth } from '../context/AuthContext';
+import { logAudit } from '../lib/auditLogger';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -55,7 +56,7 @@ const normalizePhoneNumber = (value: string) => value.replace(/[\s\-().]/g, '');
 
 export default function DailyCheck() {
   const { update, subscribe } = useFirestore();
-  const { role } = useAuth();
+  const { role, user } = useAuth();
   const readOnly = role === 'cuisinier' || role === 'barman' || role === 'serveur';
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
@@ -100,10 +101,20 @@ export default function DailyCheck() {
       positions.find((p) => p.type.toLowerCase() === res.positionType?.toLowerCase()) ??
       positions[0] ??
       null;
+    const posType = matchedPos?.type ?? res.positionType ?? '';
+    // Calculer les numéros occupés pour ce type (excluant la réservation actuelle)
+    const alreadyOccupied = new Set(
+      reservations
+        .filter(r => r.status === 'confirmed' && r.positionType === posType && r.id !== res.id && r.positionNumber?.trim())
+        .map(r => r.positionNumber!.trim()),
+    );
+    const total = matchedPos?.count ?? 0;
+    // Auto-sélectionner le premier numéro libre
+    const firstFree = Array.from({ length: total }, (_, i) => String(i + 1)).find(n => !alreadyOccupied.has(n)) ?? '1';
     setConfirmDialog({
       reservation: res,
-      posType: matchedPos?.type ?? res.positionType ?? '',
-      posNum: res.positionNumber?.trim() || '1',
+      posType,
+      posNum: firstFree,
     });
   };
 
@@ -114,15 +125,25 @@ export default function DailyCheck() {
       positionType: confirmDialog.posType,
       positionNumber: confirmDialog.posNum,
     });
+    logAudit(user, role, 'confirm-arrival', {
+      collection: 'reservations',
+      documentId: confirmDialog.reservation.id,
+      details: {
+        client: `${confirmDialog.reservation.firstName} ${confirmDialog.reservation.lastName}`,
+        position: `${confirmDialog.posType} ${confirmDialog.posNum}`,
+      },
+    });
     setConfirmDialog(null);
   };
 
   const handleAbsent = async (id: string) => {
     await update('reservations', id, { status: 'absent' });
+    logAudit(user, role, 'absent', { collection: 'reservations', documentId: id });
   };
 
   const handleCancel = async (id: string) => {
     await update('reservations', id, { status: 'cancelled' });
+    logAudit(user, role, 'cancel-arrival', { collection: 'reservations', documentId: id });
   };
 
   const filtered = reservations.filter((r) =>
@@ -138,13 +159,24 @@ export default function DailyCheck() {
     totalChildren: reservations.reduce((sum, r) => sum + (r.children || 0), 0),
   };
 
-  // Derive available numbers for selected position type
-  const selectedPosObj = positions.find(
-    (p) => p.type === confirmDialog?.posType,
-  );
+  // All numbers for selected position type
+  const selectedPosObj = positions.find((p) => p.type === confirmDialog?.posType);
   const availableNumbers = selectedPosObj
     ? Array.from({ length: selectedPosObj.count }, (_, i) => String(i + 1))
     : ['1'];
+
+  // Occupied numbers = confirmed reservations on the same position type (excluding current)
+  const occupiedNumbers = new Set(
+    reservations
+      .filter(
+        (r) =>
+          r.status === 'confirmed' &&
+          r.positionType === confirmDialog?.posType &&
+          r.id !== confirmDialog?.reservation.id &&
+          r.positionNumber?.trim(),
+      )
+      .map((r) => r.positionNumber!.trim()),
+  );
 
   return (
     <div className="space-y-6">
@@ -367,14 +399,15 @@ export default function DailyCheck() {
                       onChange={(e) => {
                         const newType = e.target.value;
                         const newPos = positions.find((p) => p.type === newType);
+                        const newCount = newPos?.count ?? 0;
+                        const newOccupied = new Set(
+                          reservations
+                            .filter(r => r.status === 'confirmed' && r.positionType === newType && r.id !== confirmDialog?.reservation.id && r.positionNumber?.trim())
+                            .map(r => r.positionNumber!.trim())
+                        );
+                        const firstFree = Array.from({ length: newCount }, (_, i) => String(i + 1)).find(n => !newOccupied.has(n)) ?? '1';
                         setConfirmDialog((prev) =>
-                          prev
-                            ? {
-                                ...prev,
-                                posType: newType,
-                                posNum: newPos && newPos.count >= 1 ? '1' : '1',
-                              }
-                            : null,
+                          prev ? { ...prev, posType: newType, posNum: firstFree } : null
                         );
                       }}
                     >
@@ -389,29 +422,44 @@ export default function DailyCheck() {
                 )}
               </div>
 
-              {/* Position number */}
+              {/* Position number — grille visuelle, occupées en noir */}
               <div className="space-y-1.5">
                 <label className="text-xs font-bold uppercase tracking-widest text-slate-500">
                   N° de position
                 </label>
-                <div className="relative">
-                  <select
-                    className="w-full appearance-none rounded-lg border border-input bg-white px-3 py-2 pr-8 text-sm outline-none focus:border-flamingo focus:ring-2 focus:ring-flamingo/20"
-                    value={confirmDialog.posNum}
-                    onChange={(e) =>
-                      setConfirmDialog((prev) =>
-                        prev ? { ...prev, posNum: e.target.value } : null,
-                      )
-                    }
-                  >
-                    {availableNumbers.map((n) => (
-                      <option key={n} value={n}>
-                        N° {n}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <div className="grid grid-cols-5 gap-2">
+                  {availableNumbers.map((n) => {
+                    const isOccupied = occupiedNumbers.has(n);
+                    const isSelected = confirmDialog.posNum === n;
+                    return (
+                      <button
+                        key={n}
+                        type="button"
+                        disabled={isOccupied}
+                        onClick={() =>
+                          !isOccupied &&
+                          setConfirmDialog((prev) => prev ? { ...prev, posNum: n } : null)
+                        }
+                        className={cn(
+                          'h-10 rounded-lg text-sm font-bold border transition-all',
+                          isOccupied
+                            ? 'bg-slate-900 text-white border-slate-900 cursor-not-allowed opacity-80'
+                            : isSelected
+                            ? 'bg-flamingo text-white border-flamingo shadow-sm'
+                            : 'bg-white text-slate-700 border-input hover:border-flamingo hover:bg-flamingo/5',
+                        )}
+                        title={isOccupied ? 'Position déjà occupée' : `N° ${n}`}
+                      >
+                        {n}
+                      </button>
+                    );
+                  })}
                 </div>
+                {occupiedNumbers.size > 0 && (
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    ■ Noir = position déjà confirmée
+                  </p>
+                )}
               </div>
 
               {/* Summary badge */}
@@ -436,7 +484,12 @@ export default function DailyCheck() {
             <Button
               className="bg-green-600 hover:bg-green-700 text-white"
               onClick={handleConfirmArrival}
-              disabled={!confirmDialog?.posType || positions.length === 0}
+              disabled={
+                !confirmDialog?.posType ||
+                positions.length === 0 ||
+                occupiedNumbers.has(confirmDialog?.posNum ?? '') ||
+                availableNumbers.every(n => occupiedNumbers.has(n))
+              }
             >
               <CheckCircle2 className="w-4 h-4 mr-1" />
               Confirmer l'arrivée

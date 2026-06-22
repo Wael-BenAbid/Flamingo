@@ -60,7 +60,7 @@
     <string name="welcome_subtitle">Gestion intelligente pour votre établissement.</string>
     <string name="login_action">Connexion</string>
     <string name="ready_admin">Prêt à vous connecter.</string>
-    <string name="copyright">© 2026 Flamingo Management</string>
+    <string name="copyright">© 2026 Flamingo • créé par wael_ben_abid</string>
     <string name="secure_access">Accès Sécurisé</string>
     <string name="secure_access_desc">Veuillez vous identifier pour accéder au panel administrateur.</string>
     <string name="overview">Vue d\'ensemble</string>

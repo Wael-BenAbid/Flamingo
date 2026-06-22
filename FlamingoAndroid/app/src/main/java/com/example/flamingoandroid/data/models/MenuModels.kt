@@ -40,11 +40,15 @@ data class TableOrder(
     val updated_at: Timestamp? = null,
     val items: List<TableOrderItem> = emptyList(),
     val total_price: Double = 0.0,
+    val grandTotal: Double? = null,
+    val discountPercent: Int = 0,
     val adults: Int = 0,
     val children: Int = 0,
     val clientName: String = "",
     val source: String = "",
-)
+) {
+    val finalTotal: Double get() = grandTotal ?: total_price
+}
 
 data class AppConfig(
     val id: String = "app_config",

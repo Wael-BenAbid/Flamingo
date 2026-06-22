@@ -31,12 +31,18 @@ class WorkerRepository {
 
     private fun today()       = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
     private fun now()         = SimpleDateFormat("HH:mm:ss",   Locale.getDefault()).format(Date())
-    private fun normalizeRole(raw: String?) = raw?.trim()?.lowercase(Locale.getDefault())?.let {
-        when (it) {
-            "chef_cuisinier", "cuisinier", "cook", "kitchen" -> "cuisine"
-            "server", "waiter"                               -> "serveur"
-            "manager"                                        -> "responsable"
-            else                                             -> it
+    private fun normalizeRole(raw: String?): String? {
+        val s = raw?.trim()?.lowercase(Locale.getDefault())
+            ?.replace('é', 'e')?.replace('è', 'e')?.replace('ê', 'e')
+            ?.replace('à', 'a')?.replace('ç', 'c') ?: return null
+        return when {
+            s == "responsable" || s == "manager"                        -> "responsable"
+            s == "cuisinier" || s == "cuisine" || s.startsWith("chef_cu") -> "cuisinier"
+            s == "barman" || s == "bar" || s == "barmaid"               -> "barman"
+            s == "serveur" || s == "server" || s == "waiter"
+                || s == "chef_serveur"                                  -> "serveur"
+            s == "admin"                                                -> "admin"
+            else                                                        -> s
         }
     }
 
@@ -49,13 +55,36 @@ class WorkerRepository {
                 if (error != null) { trySend(emptyList()); return@addSnapshotListener }
                 trySend(
                     snapshot?.documents.orEmpty().mapNotNull { doc ->
-                        doc.toObject(Worker::class.java)?.copy(
-                            id  = doc.id,
-                            uid = doc.getString("uid").orEmpty().ifBlank { doc.id },
-                            role = doc.getString("role").orEmpty().ifBlank {
-                                normalizeRole(doc.getString("category")).orEmpty()
-                            }
-                        )
+                        try {
+                            doc.toObject(Worker::class.java)?.copy(
+                                id  = doc.id,
+                                uid = doc.getString("uid").orEmpty().ifBlank { doc.id },
+                                role = doc.getString("role").orEmpty().ifBlank {
+                                    normalizeRole(doc.getString("category")).orEmpty()
+                                }
+                            )
+                        } catch (_: Exception) {
+                            Worker(
+                                id             = doc.id,
+                                uid            = doc.getString("uid").orEmpty().ifBlank { doc.id },
+                                fullName       = doc.getString("fullName").orEmpty(),
+                                category       = doc.getString("category").orEmpty(),
+                                role           = doc.getString("role").orEmpty().ifBlank {
+                                                     normalizeRole(doc.getString("category")).orEmpty()
+                                                 },
+                                dailyWage      = doc.getDouble("dailyWage") ?: doc.getLong("dailyWage")?.toDouble() ?: 0.0,
+                                totalAdvances  = doc.getDouble("totalAdvances") ?: doc.getLong("totalAdvances")?.toDouble() ?: 0.0,
+                                totalPenalties = doc.getDouble("totalPenalties") ?: doc.getLong("totalPenalties")?.toDouble() ?: 0.0,
+                                totalPaid      = doc.getDouble("totalPaid") ?: doc.getLong("totalPaid")?.toDouble() ?: 0.0,
+                                totalEarned    = doc.getDouble("totalEarned") ?: doc.getLong("totalEarned")?.toDouble() ?: 0.0,
+                                attendanceCount= doc.getDouble("attendanceCount") ?: doc.getLong("attendanceCount")?.toDouble() ?: 0.0,
+                                currentPresence= doc.getString("currentPresence") ?: "off",
+                                lastPresenceDate= doc.getString("lastPresenceDate"),
+                                startDate      = doc.getString("startDate"),
+                                email          = doc.getString("email").orEmpty(),
+                                isActive       = doc.getBoolean("isActive") ?: true
+                            )
+                        }
                     }
                 )
             }
@@ -98,13 +127,37 @@ class WorkerRepository {
 
     suspend fun getWorkers(): List<Worker> = try {
         db.collection("workers").get().await().documents.mapNotNull { doc ->
-            doc.toObject(Worker::class.java)?.copy(
-                id  = doc.id,
-                uid = doc.getString("uid").orEmpty().ifBlank { doc.id },
-                role = doc.getString("role").orEmpty().ifBlank {
-                    normalizeRole(doc.getString("category")).orEmpty()
-                }
-            )
+            try {
+                doc.toObject(Worker::class.java)?.copy(
+                    id  = doc.id,
+                    uid = doc.getString("uid").orEmpty().ifBlank { doc.id },
+                    role = doc.getString("role").orEmpty().ifBlank {
+                        normalizeRole(doc.getString("category")).orEmpty()
+                    }
+                )
+            } catch (_: Exception) {
+                // Fallback manuel si toObject() échoue (ex: createdAt String vs Timestamp)
+                Worker(
+                    id             = doc.id,
+                    uid            = doc.getString("uid").orEmpty().ifBlank { doc.id },
+                    fullName       = doc.getString("fullName").orEmpty(),
+                    category       = doc.getString("category").orEmpty(),
+                    role           = doc.getString("role").orEmpty().ifBlank {
+                                         normalizeRole(doc.getString("category")).orEmpty()
+                                     },
+                    dailyWage      = doc.getDouble("dailyWage") ?: doc.getLong("dailyWage")?.toDouble() ?: 0.0,
+                    totalAdvances  = doc.getDouble("totalAdvances") ?: doc.getLong("totalAdvances")?.toDouble() ?: 0.0,
+                    totalPenalties = doc.getDouble("totalPenalties") ?: doc.getLong("totalPenalties")?.toDouble() ?: 0.0,
+                    totalPaid      = doc.getDouble("totalPaid") ?: doc.getLong("totalPaid")?.toDouble() ?: 0.0,
+                    totalEarned    = doc.getDouble("totalEarned") ?: doc.getLong("totalEarned")?.toDouble() ?: 0.0,
+                    attendanceCount= doc.getDouble("attendanceCount") ?: doc.getLong("attendanceCount")?.toDouble() ?: 0.0,
+                    currentPresence= doc.getString("currentPresence") ?: "off",
+                    lastPresenceDate= doc.getString("lastPresenceDate"),
+                    startDate      = doc.getString("startDate"),
+                    email          = doc.getString("email").orEmpty(),
+                    isActive       = doc.getBoolean("isActive") ?: true
+                )
+            }
         }
     } catch (e: Exception) { emptyList() }
 
@@ -126,22 +179,59 @@ class WorkerRepository {
         val role = worker.role.ifBlank { normalizeRole(worker.category) ?: "employee" }
         val id   = worker.uid.trim().ifBlank { worker.id.trim() }
 
+        // HashMap pour écrire createdAt/updatedAt qui sont @Exclude sur le data class.
+        val data = hashMapOf<String, Any?>(
+            "fullName"        to worker.fullName,
+            "category"        to worker.category,
+            "role"            to role,
+            "email"           to worker.email,
+            "uid"             to id.ifBlank { "" },
+            "dailyWage"       to worker.dailyWage,
+            "totalAdvances"   to worker.totalAdvances,
+            "totalPenalties"  to worker.totalPenalties,
+            "totalPaid"       to worker.totalPaid,
+            "totalEarned"     to worker.totalEarned,
+            "attendanceCount" to worker.attendanceCount,
+            "currentPresence" to worker.currentPresence,
+            "lastPresenceDate" to worker.lastPresenceDate,
+            "startDate"       to worker.startDate,
+            "isActive"        to worker.isActive,
+            "createdAt"       to now,
+            "updatedAt"       to now,
+        )
+
         if (id.isBlank()) {
-            val ref = db.collection("workers")
-                .add(worker.copy(role = role, createdAt = now, updatedAt = now)).await()
+            val ref = db.collection("workers").add(data).await()
             Result.success(ref.id)
         } else {
-            db.collection("workers").document(id)
-                .set(worker.copy(id = id, uid = id, role = role, createdAt = now, updatedAt = now)).await()
+            db.collection("workers").document(id).set(data).await()
             Result.success(id)
         }
     } catch (e: Exception) { Result.failure(e) }
 
     suspend fun updateWorker(id: String, worker: Worker): Result<Unit> = try {
-        val role = worker.role.ifBlank { normalizeRole(worker.category) ?: "employee" }
-        db.collection("workers").document(id)
-            .set(worker.copy(id = id, uid = worker.uid.ifBlank { id }, role = role, updatedAt = Timestamp.now()))
-            .await()
+        val role = worker.role.ifBlank { normalizeRole(worker.category) ?: "serveur" }
+        val now  = Timestamp.now()
+        // HashMap pour écrire updatedAt (@Exclude sur le data class, jamais écrit via .set(Worker))
+        val data = hashMapOf<String, Any?>(
+            "fullName"         to worker.fullName,
+            "category"         to worker.category,
+            "role"             to role,
+            "email"            to worker.email,
+            "uid"              to worker.uid.ifBlank { id },
+            "dailyWage"        to worker.dailyWage,
+            "totalAdvances"    to worker.totalAdvances,
+            "totalPenalties"   to worker.totalPenalties,
+            "totalPaid"        to worker.totalPaid,
+            "totalEarned"      to worker.totalEarned,
+            "attendanceCount"  to worker.attendanceCount,
+            "currentPresence"  to worker.currentPresence,
+            "lastPresenceDate" to worker.lastPresenceDate,
+            "startDate"        to worker.startDate,
+            "isActive"         to worker.isActive,
+            "updatedAt"        to now,
+        )
+        db.collection("workers").document(id).set(data).await()
         Result.success(Unit)
     } catch (e: Exception) { Result.failure(e) }
 

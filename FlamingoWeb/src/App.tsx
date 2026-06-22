@@ -14,6 +14,7 @@ import MenuAndTablesManagement from './pages/MenuAndTablesManagement';
 import KitchenOrders from './pages/KitchenOrders';
 import PlaceOrder from './pages/PlaceOrder';
 import Payment from './pages/Payment';
+import AuditLog from './pages/AuditLog';
 import { STAFF_FEATURE_ACCESS, ROLE_HOME_ROUTE, type StaffFeature, type StaffRole } from '../shared/constants';
 
 const FALLBACK_ROUTE_BY_FEATURE: Record<StaffFeature, string> = {
@@ -28,6 +29,7 @@ const FALLBACK_ROUTE_BY_FEATURE: Record<StaffFeature, string> = {
   kitchenOrders: '/kitchen',
   placeOrder: '/place-order',
   payment: '/payment',
+  auditLog: '/audit',
 };
 
 
@@ -75,6 +77,7 @@ export default function App() {
           <Route path="/kitchen" element={<ProtectedRoute feature="kitchenOrders"><KitchenOrders /></ProtectedRoute>} />
           <Route path="/place-order" element={<ProtectedRoute feature="placeOrder"><PlaceOrder /></ProtectedRoute>} />
           <Route path="/payment" element={<ProtectedRoute feature="payment"><Payment /></ProtectedRoute>} />
+          <Route path="/audit" element={<ProtectedRoute feature="auditLog"><AuditLog /></ProtectedRoute>} />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

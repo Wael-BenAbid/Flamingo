@@ -15,26 +15,41 @@ class WorkersViewModel(
     private val _workers = MutableStateFlow<List<Worker>>(emptyList())
     val workers: StateFlow<List<Worker>> = _workers
 
-    private val _isLoading = MutableStateFlow(false)
+    private val _isLoading = MutableStateFlow(true)
     val isLoading: StateFlow<Boolean> = _isLoading
 
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage
 
     init {
-        loadWorkers()
+        // Listener temps-réel : la liste se met à jour automatiquement
+        // dès qu'un travailleur est ajouté/modifié/supprimé (depuis n'importe quel appareil).
+        viewModelScope.launch {
+            try {
+                workerRepo.observeWorkers().collect { list ->
+                    _workers.value = list
+                    _isLoading.value = false
+                    _errorMessage.value = null
+                }
+            } catch (e: Exception) {
+                _isLoading.value = false
+                _errorMessage.value = e.message ?: "Erreur lors du chargement"
+            }
+        }
     }
 
+    // Conservé pour compatibilité avec les appels existants dans WorkersFragment.
+    // Le listener temps-réel gère déjà les mises à jour, ce call force un refresh immédiat.
     fun loadWorkers() {
         viewModelScope.launch {
-            _isLoading.value = true
             try {
-                _workers.value = workerRepo.getWorkers()
+                val fresh = workerRepo.getWorkers()
+                if (fresh.isNotEmpty()) {
+                    _workers.value = fresh
+                }
                 _errorMessage.value = null
             } catch (e: Exception) {
                 _errorMessage.value = e.message ?: "Erreur lors du chargement"
-            } finally {
-                _isLoading.value = false
             }
         }
     }

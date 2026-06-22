@@ -13,6 +13,7 @@ import {
 import { useFirestore } from '../hooks/useFirestore';
 import { useAuth } from '../context/AuthContext';
 import { USER_ROLES, STOCK_CATEGORY_ACCESS } from '../../shared/constants';
+import { logAudit } from '../lib/auditLogger';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -70,7 +71,7 @@ const CATEGORY_TO_KEY: Record<string, string> = {
 
 export default function Inventory() {
   const { create, update, subscribe, remove } = useFirestore();
-  const { role } = useAuth();
+  const { role, user } = useAuth();
 
   const allowedCategoryKeys = STOCK_CATEGORY_ACCESS[role] ?? [];
   const hasFullAccess = allowedCategoryKeys === 'all';
@@ -133,7 +134,12 @@ export default function Inventory() {
 
   const handleAdd = async () => {
     if (!newProduct.name || newProduct.stockQuantity === undefined) return;
+    if ((newProduct.buyPrice ?? 0) < 0 || (newProduct.sellPrice ?? 0) < 0 || (newProduct.stockQuantity ?? 0) < 0) return;
     await create('inventory', newProduct);
+    logAudit(user, role, 'create-product', {
+      collection: 'inventory',
+      details: { name: newProduct.name, category: newProduct.category },
+    });
     setIsAddOpen(false);
     setNewProduct({
       name: '',
@@ -175,6 +181,12 @@ export default function Inventory() {
 
     await update('inventory', saleTarget.id, {
       stockQuantity: Math.max(0, available - quantity)
+    });
+
+    logAudit(user, role, 'sale-stock', {
+      collection: 'inventory',
+      documentId: saleTarget.id,
+      details: { product: saleTarget.name, quantity, total: unitSellPrice * quantity },
     });
 
     setSaleTarget(null);
@@ -402,7 +414,14 @@ export default function Inventory() {
                           variant="ghost"
                           size="sm"
                           className="text-[10px] font-bold uppercase text-red-400 hover:text-red-600 hover:bg-transparent px-0 underline tracking-widest"
-                          onClick={() => remove('inventory', p.id)}
+                          onClick={() => {
+                            remove('inventory', p.id);
+                            logAudit(user, role, 'delete-product', {
+                              collection: 'inventory',
+                              documentId: p.id,
+                              details: { name: p.name },
+                            });
+                          }}
                         >
                           Supprimer
                         </Button>
