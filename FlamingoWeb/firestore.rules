@@ -18,7 +18,7 @@ service cloud.firestore {
         request.auth.token.email == 'm.aminejaouani@gmail.com' ||
         // Admins dynamiques via collection Firestore "admins/{uid}"
         request.auth.token.role == 'admin' ||
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        exists(/databases/$(database)/documents/admin/$(request.auth.uid))
       );
     }
 
@@ -308,8 +308,8 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Admins list — read only
-    match /admins/{userId} {
+    // Admins list — read only (collection named "admin")
+    match /admin/{userId} {
       allow read: if isSignedIn();
       allow write: if false;
     }

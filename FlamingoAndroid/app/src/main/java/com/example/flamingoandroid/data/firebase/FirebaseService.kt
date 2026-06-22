@@ -158,10 +158,10 @@ class FirebaseService {
         } else {
             val normalizedEmail = user.email?.trim().orEmpty()
 
-            db.collection("admins").document(user.uid).get().await().exists() ||
-                (normalizedEmail.isNotBlank() && db.collection("admins").document(normalizedEmail).get().await().exists()) ||
-                db.collection("admins").whereEqualTo("uid", user.uid).limit(1).get().await().documents.isNotEmpty() ||
-                (normalizedEmail.isNotBlank() && db.collection("admins").whereEqualTo("email", normalizedEmail).limit(1).get().await().documents.isNotEmpty()) ||
+            db.collection("admin").document(user.uid).get().await().exists() ||
+                (normalizedEmail.isNotBlank() && db.collection("admin").document(normalizedEmail).get().await().exists()) ||
+                db.collection("admin").whereEqualTo("uid", user.uid).limit(1).get().await().documents.isNotEmpty() ||
+                (normalizedEmail.isNotBlank() && db.collection("admin").whereEqualTo("email", normalizedEmail).limit(1).get().await().documents.isNotEmpty()) ||
                 db.collection("workers").whereEqualTo("uid", user.uid).limit(1).get().await().documents.any {
                     normalizeRoleValue(it.getString("role")) == "admin"
                 } ||

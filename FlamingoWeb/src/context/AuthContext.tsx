@@ -133,6 +133,16 @@ async function resolveUserRole(user: User): Promise<UserRole> {
     // Keep falling through to Firestore lookup.
   }
 
+  // Check admin collection (singular) — document ID = UID
+  try {
+    const adminDoc = await getDoc(doc(db, 'admin', user.uid));
+    if (adminDoc.exists()) {
+      return USER_ROLES.ADMIN;
+    }
+  } catch {
+    // Keep falling through.
+  }
+
   try {
     const workerDoc = await getDoc(doc(db, 'workers', user.uid));
     if (workerDoc.exists()) {
