@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { addDoc, collection, doc, getDocs, query, Timestamp, updateDoc, where } from 'firebase/firestore';
+import { collection, doc, getDocs, query, Timestamp, where, writeBatch } from 'firebase/firestore';
 import { format, startOfToday } from 'date-fns';
 import { CheckCircle2, ChevronDown, CreditCard, Layers, Loader2, Printer, UserPlus, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -800,11 +800,12 @@ function InvoiceDialog({
     try {
       const todayStr = format(startOfToday(), 'yyyy-MM-dd');
       const now = Timestamp.now();
+      const batch = writeBatch(db);
 
-      // Sale records for each item (at original prices for product tracking)
+      // Sales records per item — original prices for product tracking
       for (const item of orderItems) {
         if (norm(item.quantity) > 0) {
-          await addDoc(collection(db, 'sales'), {
+          batch.set(doc(collection(db, 'sales')), {
             productName:   item.name,
             productId:     item.item_id || '',
             quantity:      norm(item.quantity),
@@ -821,11 +822,10 @@ function InvoiceDialog({
         }
       }
 
-      // Adjustment record: captures any manual order total change vs. original item prices
-      // This ensures productSalesRevenue in bilan reflects the actual amount collected
+      // Adjustment record: manual order total change vs. original item prices
       const orderAdjustment = customOrderTotal - computedOrderTotal;
       if (Math.abs(orderAdjustment) > 0.009) {
-        await addDoc(collection(db, 'sales'), {
+        batch.set(doc(collection(db, 'sales')), {
           productName:   `Ajustement commande — ${tableLabel}`,
           productId:     'table-adjustment',
           quantity:      1,
@@ -843,7 +843,7 @@ function InvoiceDialog({
 
       // Mark order paid
       if (order?.id) {
-        await updateDoc(doc(db, 'table_orders', order.id), {
+        batch.update(doc(db, 'table_orders', order.id), {
           status:             'paid',
           paidAt:             now,
           grandTotal:         finalTotal,
@@ -856,18 +856,21 @@ function InvoiceDialog({
         });
       }
 
-      // Mark reservation paid (keep 'confirmed' for bilan revenue)
+      // Mark reservation paid
       if (reservation?.id) {
-        await updateDoc(doc(db, 'reservations', reservation.id), {
+        batch.update(doc(db, 'reservations', reservation.id), {
           paidAt:     now,
           grandTotal: finalTotal,
         });
       }
 
+      // Commit everything atomically — all succeed or all fail
+      await batch.commit();
       setPaid(true);
     } catch (err) {
-      window.alert("Erreur lors de l'enregistrement du paiement.");
-      console.error(err);
+      const msg = err instanceof Error ? err.message : 'Erreur inconnue';
+      window.alert(`Erreur lors de l'enregistrement du paiement : ${msg}`);
+      console.error('handlePay error:', err);
     } finally {
       setIsPaying(false);
     }

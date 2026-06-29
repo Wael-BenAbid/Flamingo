@@ -94,10 +94,11 @@ export const WORKER_CATEGORIES = [
 ] as const;
 
 export const RESERVATION_STATUS = {
-  CONFIRMED: 'confirmed',
-  PENDING: 'pending',
-  CANCELLED: 'cancelled',
-  ABSENT: 'absent'
+  CONFIRMED:   'confirmed',
+  CHECKED_IN:  'checked-in',
+  PENDING:     'pending',
+  CANCELLED:   'cancelled',
+  ABSENT:      'absent',
 } as const;
 
 export const ATTENDANCE_STATUS = {

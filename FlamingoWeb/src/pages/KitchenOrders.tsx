@@ -213,8 +213,9 @@ export default function KitchenOrders() {
         if (!t) return true;
         const parts = t.split(':');
         if (parts.length !== 2) return true;
-        const h = parseInt(parts[0], 10) || 0;
-        const m = parseInt(parts[1], 10) || 0;
+        const h = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10);
+        if (isNaN(h) || isNaN(m) || h < 0 || h > 23 || m < 0 || m > 59) return true;
         return h * 60 + m <= currentMinuteOfDay;
       })
       .sort((left, right) => {

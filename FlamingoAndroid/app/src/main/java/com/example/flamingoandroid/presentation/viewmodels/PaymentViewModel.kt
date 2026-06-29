@@ -99,26 +99,26 @@ class PaymentViewModel(
                 withTimeout(20_000) {
                 val now      = Timestamp.now()
                 val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+                val batch    = db.batch()
 
-                // 1 — sales records per item → Bilans Journaliers productSalesRevenue
+                // 1 — sales records per item (original prices for product tracking)
                 order?.items?.forEach { item ->
                     if (item.quantity > 0) {
-                        db.collection("sales").add(
-                            mapOf(
-                                "productName"   to item.name,
-                                "productId"     to item.item_id,
-                                "quantity"      to item.quantity,
-                                "unitSellPrice" to item.unit_price,
-                                "unitBuyPrice"  to 0.0,
-                                "totalPrice"    to item.unit_price * item.quantity,
-                                "totalCost"     to 0.0,
-                                "date"          to todayStr,
-                                "source"        to "table_payment",
-                                "tableLabel"    to tableLabel,
-                                "tableOrderId"  to (order.id),
-                                "createdAt"     to now,
-                            )
-                        ).await()
+                        val ref = db.collection("sales").document()
+                        batch.set(ref, mapOf(
+                            "productName"   to item.name,
+                            "productId"     to item.item_id,
+                            "quantity"      to item.quantity,
+                            "unitSellPrice" to item.unit_price,
+                            "unitBuyPrice"  to 0.0,
+                            "totalPrice"    to item.unit_price * item.quantity,
+                            "totalCost"     to 0.0,
+                            "date"          to todayStr,
+                            "source"        to "table_payment",
+                            "tableLabel"    to tableLabel,
+                            "tableOrderId"  to (order.id),
+                            "createdAt"     to now,
+                        ))
                     }
                 }
 
@@ -126,27 +126,27 @@ class PaymentViewModel(
                 val computedOrderTotal = order?.items?.sumOf { it.unit_price * it.quantity } ?: 0.0
                 val orderAdjustment = adjustedOrderTotal - computedOrderTotal
                 if (order != null && Math.abs(orderAdjustment) > 0.009) {
-                    db.collection("sales").add(
-                        mapOf(
-                            "productName"   to "Ajustement commande ($tableLabel)",
-                            "productId"     to "table-adjustment",
-                            "quantity"      to 1,
-                            "unitSellPrice" to orderAdjustment,
-                            "unitBuyPrice"  to 0.0,
-                            "totalPrice"    to orderAdjustment,
-                            "totalCost"     to 0.0,
-                            "date"          to todayStr,
-                            "source"        to "table_adjustment",
-                            "tableLabel"    to tableLabel,
-                            "tableOrderId"  to order.id,
-                            "createdAt"     to now,
-                        )
-                    ).await()
+                    val ref = db.collection("sales").document()
+                    batch.set(ref, mapOf(
+                        "productName"   to "Ajustement commande ($tableLabel)",
+                        "productId"     to "table-adjustment",
+                        "quantity"      to 1,
+                        "unitSellPrice" to orderAdjustment,
+                        "unitBuyPrice"  to 0.0,
+                        "totalPrice"    to orderAdjustment,
+                        "totalCost"     to 0.0,
+                        "date"          to todayStr,
+                        "source"        to "table_adjustment",
+                        "tableLabel"    to tableLabel,
+                        "tableOrderId"  to order.id,
+                        "createdAt"     to now,
+                    ))
                 }
 
                 // 2 — mark table_order paid
                 order?.id?.takeIf { it.isNotBlank() }?.let { orderId ->
-                    db.collection("table_orders").document(orderId).update(
+                    batch.update(
+                        db.collection("table_orders").document(orderId),
                         mapOf(
                             "status"             to "paid",
                             "paidAt"             to now,
@@ -158,18 +158,22 @@ class PaymentViewModel(
                             "customChildPrice"   to customChildPrice,
                             "adjustedOrderTotal" to adjustedOrderTotal,
                         )
-                    ).await()
+                    )
                 }
 
-                // 3 — mark reservation paid (keep 'confirmed' for bilan revenue)
+                // 3 — mark reservation paid
                 reservation?.id?.takeIf { it.isNotBlank() }?.let { resId ->
-                    db.collection("reservations").document(resId).update(
+                    batch.update(
+                        db.collection("reservations").document(resId),
                         mapOf(
                             "paidAt"     to now,
                             "grandTotal" to finalTotal,
                         )
-                    ).await()
+                    )
                 }
+
+                // Commit all writes atomically — all succeed or all fail
+                batch.commit().await()
 
                 _paidTables.value = _paidTables.value + tableLabel
                 _action.value = PaymentAction.Success(tableLabel)

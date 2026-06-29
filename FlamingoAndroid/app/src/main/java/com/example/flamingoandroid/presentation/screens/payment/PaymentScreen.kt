@@ -806,6 +806,8 @@ private fun printHtml(context: Context, html: String, jobName: String) {
                     .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
                     .build()
             )
+            // Release WebView after print dialog is triggered to avoid memory leak
+            view.postDelayed({ view.destroy() }, 3_000)
         }
     }
     webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
