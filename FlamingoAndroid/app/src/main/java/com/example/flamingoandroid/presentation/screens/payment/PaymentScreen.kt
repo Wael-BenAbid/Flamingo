@@ -61,7 +61,7 @@ private val Mist    = Color(0xFF9DB4C0)
 private val Jade    = Color(0xFF2DC653)
 private val Crimson = Color(0xFFE8603A)
 
-private val DISCOUNT_OPTIONS = listOf(5, 10, 20, 25)
+private val DISCOUNT_OPTIONS = listOf(5, 10, 15, 20)
 private fun fmtDt(d: Double) = String.format(Locale.FRANCE, "%.2f DT", d)
 
 // ── Main screen ───────────────────────────────────────────────────────────────
@@ -187,15 +187,19 @@ fun PaymentScreen(
             position    = position,
             isPaid      = tableLabel in state.paidTables || order?.status == "paid",
             onDismiss   = { invoiceTable = null },
-            onPay       = { discountPct, discountAmt, finalTotal, remarque ->
+            onPay       = { discountPct, discountAmt, finalTotal, remarque,
+                            custAdultPx, custChildPx, custOrdTotal ->
                 viewModel.payTable(
-                    tableLabel      = tableLabel,
-                    reservation     = reservation,
-                    order           = order,
-                    discountPercent = discountPct,
-                    discountAmount  = discountAmt,
-                    finalTotal      = finalTotal,
-                    remarque        = remarque,
+                    tableLabel         = tableLabel,
+                    reservation        = reservation,
+                    order              = order,
+                    discountPercent    = discountPct,
+                    discountAmount     = discountAmt,
+                    finalTotal         = finalTotal,
+                    remarque           = remarque,
+                    customAdultPrice   = custAdultPx,
+                    customChildPrice   = custChildPx,
+                    adjustedOrderTotal = custOrdTotal,
                 )
             },
         )
@@ -447,33 +451,38 @@ private fun InvoiceDialog(
     position: Position?,
     isPaid: Boolean,
     onDismiss: () -> Unit,
-    onPay: (discountPct: Int, discountAmt: Double, finalTotal: Double, remarque: String) -> Unit,
+    onPay: (discountPct: Int, discountAmt: Double, finalTotal: Double, remarque: String,
+             customAdultPrice: Double, customChildPrice: Double, customOrderTotal: Double) -> Unit,
 ) {
     val context = LocalContext.current
 
-    var discountPct by remember { mutableStateOf(0) }
-    var remarque    by remember { mutableStateOf("") }
-    var isPaying    by remember { mutableStateOf(false) }
+    // Compute initial order total before state (used for initialising customOrderTotal)
+    val orderItems         = order?.items ?: emptyList()
+    val computedOrderTotal = orderItems.sumOf { it.unit_price * it.quantity }
 
-    val adultUnitPrice = position?.price ?: 0.0
-    val childUnitPrice = position?.childPrice?.takeIf { it > 0 } ?: (adultUnitPrice * 0.5)
+    val defaultAdultPrice = position?.price ?: 0.0
+    val defaultChildPrice = position?.childPrice?.takeIf { it > 0 } ?: (defaultAdultPrice * 0.5)
+
+    var discountPct      by remember { mutableStateOf(0) }
+    var remarque         by remember { mutableStateOf("") }
+    var isPaying         by remember { mutableStateOf(false) }
+    var customAdultPrice by remember { mutableStateOf(defaultAdultPrice) }
+    var customChildPrice by remember { mutableStateOf(defaultChildPrice) }
+    var customOrderTotal by remember { mutableStateOf(computedOrderTotal) }
+
+    val adultUnitPrice = customAdultPrice
+    val childUnitPrice = customChildPrice
 
     val isWalkIn = reservation == null && order?.source == "walkin"
 
     val adults   = reservation?.adults   ?: (if (isWalkIn) (order?.adults   ?: 0) else 0)
     val children = reservation?.children ?: (if (isWalkIn) (order?.children ?: 0) else 0)
 
-    val reservationTotal = when {
-        reservation != null && reservation.totalPrice > 0 -> reservation.totalPrice
-        reservation != null -> adults * adultUnitPrice + children * childUnitPrice
-        isWalkIn -> adults * adultUnitPrice + children * childUnitPrice
-        else -> 0.0
-    }
-    val orderItems   = order?.items ?: emptyList()
-    val orderTotal   = orderItems.sumOf { it.unit_price * it.quantity }
-    val subtotal     = reservationTotal + orderTotal
-    val discountAmt  = Math.round(subtotal * discountPct) / 100.0
-    val finalTotal   = subtotal - discountAmt
+    val reservationTotal = adultUnitPrice * adults + childUnitPrice * children
+    val orderTotal       = customOrderTotal
+    val subtotal         = reservationTotal + orderTotal
+    val discountAmt      = Math.round(subtotal * discountPct) / 100.0
+    val finalTotal       = subtotal - discountAmt
 
     val clientName = when {
         reservation != null -> "${reservation.firstName} ${reservation.lastName}".trim().ifBlank { "—" }
@@ -540,21 +549,30 @@ private fun InvoiceDialog(
                             InvoiceRow("Type", "Sans réservation")
                         else if (reservation != null && reservation.phone.isNotBlank())
                             InvoiceRow("Téléphone", reservation.phone)
-                        if (adultUnitPrice > 0) {
-                            if (adults > 0)
-                                InvoiceRow(
-                                    "$adults Adulte${if (adults > 1) "s" else ""} × ${fmtDt(adultUnitPrice)}",
-                                    fmtDt(adults * adultUnitPrice),
-                                    valueColor = Teal,
-                                )
-                            if (children > 0)
-                                InvoiceRow(
-                                    "$children Enfant${if (children > 1) "s" else ""} × ${fmtDt(childUnitPrice)}",
-                                    fmtDt(children * childUnitPrice),
-                                    valueColor = Amber,
-                                )
-                        } else {
-                            InvoiceRow("Personnes", "${adults}A + ${children}ENF")
+                        if (adults > 0) {
+                            EditablePriceRow(
+                                label    = "$adults Adulte${if (adults > 1) "s" else ""} ×",
+                                price    = customAdultPrice,
+                                total    = customAdultPrice * adults,
+                                accent   = Teal,
+                                enabled  = !isPaid,
+                                onDecrease = { customAdultPrice = maxOf(0.0, customAdultPrice - 0.5) },
+                                onIncrease = { customAdultPrice += 0.5 },
+                            )
+                        }
+                        if (children > 0) {
+                            EditablePriceRow(
+                                label    = "$children Enfant${if (children > 1) "s" else ""} ×",
+                                price    = customChildPrice,
+                                total    = customChildPrice * children,
+                                accent   = Amber,
+                                enabled  = !isPaid,
+                                onDecrease = { customChildPrice = maxOf(0.0, customChildPrice - 0.5) },
+                                onIncrease = { customChildPrice += 0.5 },
+                            )
+                        }
+                        if (adults == 0 && children == 0) {
+                            InvoiceRow("Personnes", "Aucune")
                         }
                     } else {
                         Text("Aucun client assigné.", color = Mist,
@@ -564,20 +582,32 @@ private fun InvoiceDialog(
                     HorizontalDivider(color = Outline)
 
                     // Commande
+                    SectionTitle("CONSOMMATION — Extra / Boissons")
                     if (orderItems.isNotEmpty()) {
-                        SectionTitle("CONSOMMATION")
-                        orderItems.forEach { item ->
-                            OrderItemRow(item)
+                        orderItems.forEach { item -> OrderItemRow(item) }
+                        if (computedOrderTotal != customOrderTotal) {
+                            InvoiceRow(
+                                "Calculé",
+                                fmtDt(computedOrderTotal),
+                                valueColor = Outline,
+                            )
                         }
-                        InvoiceRow(
-                            "Sous-total consommation",
-                            fmtDt(orderTotal),
-                            valueColor = Pearl,
-                        )
                     } else {
-                        Text("Aucune commande.", color = Mist,
+                        Text("Aucun article — ajustez le total si nécessaire.", color = Mist,
                             style = MaterialTheme.typography.bodySmall)
                     }
+                    // Editable order total
+                    EditablePriceRow(
+                        label    = "Total consommation",
+                        price    = customOrderTotal,
+                        total    = customOrderTotal,
+                        accent   = Pearl,
+                        enabled  = !isPaid,
+                        onDecrease = { customOrderTotal = maxOf(0.0, customOrderTotal - 0.5) },
+                        onIncrease = { customOrderTotal += 0.5 },
+                        showReset = computedOrderTotal != customOrderTotal && !isPaid,
+                        onReset   = { customOrderTotal = computedOrderTotal },
+                    )
 
                     HorizontalDivider(color = Outline)
 
@@ -647,8 +677,10 @@ private fun InvoiceDialog(
 
                     // Total récapitulatif
                     SectionTitle("RÉCAPITULATIF")
-                    if (reservationTotal > 0)
-                        InvoiceRow("Réservation", fmtDt(reservationTotal))
+                    if (adults > 0)
+                        InvoiceRow("${adults}A × ${fmtDt(customAdultPrice)}", fmtDt(customAdultPrice * adults), valueColor = Teal)
+                    if (children > 0)
+                        InvoiceRow("${children}ENF × ${fmtDt(customChildPrice)}", fmtDt(customChildPrice * children), valueColor = Amber)
                     if (orderTotal > 0)
                         InvoiceRow("Consommation", fmtDt(orderTotal))
                     if (discountPct > 0) {
@@ -723,7 +755,8 @@ private fun InvoiceDialog(
                         onClick = {
                             if (!isPaid && !isPaying) {
                                 isPaying = true
-                                onPay(discountPct, discountAmt, finalTotal, remarque)
+                                onPay(discountPct, discountAmt, finalTotal, remarque,
+                                      customAdultPrice, customChildPrice, customOrderTotal)
                             }
                         },
                         enabled = !isPaid && !isPaying,
@@ -1500,3 +1533,77 @@ private fun OrderItemRow(item: TableOrderItem) {
 
 // Padding extension shorthand
 private fun Modifier.paddingEnd(dp: androidx.compose.ui.unit.Dp) = this.padding(end = dp)
+
+// ── Editable price row (+/- stepper) ─────────────────────────────────────────
+@Composable
+private fun EditablePriceRow(
+    label: String,
+    price: Double,
+    total: Double,
+    accent: Color,
+    enabled: Boolean,
+    onDecrease: () -> Unit,
+    onIncrease: () -> Unit,
+    showReset: Boolean = false,
+    onReset: () -> Unit = {},
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            color = Mist,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.weight(1f).paddingEnd(4.dp),
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextButton(
+                onClick = onDecrease,
+                enabled = enabled,
+                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                modifier = Modifier.height(28.dp),
+            ) {
+                Text("−", color = if (enabled && price > 0) Amber else Outline,
+                    fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            }
+            Text(
+                text = fmtDt(price),
+                color = accent,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
+                style = MaterialTheme.typography.labelMedium,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.widthIn(min = 72.dp),
+            )
+            TextButton(
+                onClick = onIncrease,
+                enabled = enabled,
+                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                modifier = Modifier.height(28.dp),
+            ) {
+                Text("+", color = if (enabled) Amber else Outline,
+                    fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            }
+            if (showReset) {
+                TextButton(
+                    onClick = onReset,
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                    modifier = Modifier.height(28.dp),
+                ) {
+                    Text("↺", color = Teal, style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        }
+        if (total != price) {
+            Text(
+                text = "= ${fmtDt(total)}",
+                color = accent,
+                fontWeight = FontWeight.SemiBold,
+                fontFamily = FontFamily.Monospace,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+}

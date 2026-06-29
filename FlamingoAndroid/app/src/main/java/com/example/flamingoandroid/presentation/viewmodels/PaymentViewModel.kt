@@ -90,6 +90,9 @@ class PaymentViewModel(
         discountAmount: Double,
         finalTotal: Double,
         remarque: String,
+        customAdultPrice: Double = 0.0,
+        customChildPrice: Double = 0.0,
+        adjustedOrderTotal: Double = 0.0,
     ) {
         viewModelScope.launch {
             try {
@@ -123,12 +126,15 @@ class PaymentViewModel(
                 order?.id?.takeIf { it.isNotBlank() }?.let { orderId ->
                     db.collection("table_orders").document(orderId).update(
                         mapOf(
-                            "status"          to "paid",
-                            "paidAt"          to now,
-                            "grandTotal"      to finalTotal,
-                            "discountPercent" to discountPercent,
-                            "discountAmount"  to discountAmount,
-                            "remarque"        to remarque.trim(),
+                            "status"             to "paid",
+                            "paidAt"             to now,
+                            "grandTotal"         to finalTotal,
+                            "discountPercent"    to discountPercent,
+                            "discountAmount"     to discountAmount,
+                            "remarque"           to remarque.trim(),
+                            "customAdultPrice"   to customAdultPrice,
+                            "customChildPrice"   to customChildPrice,
+                            "adjustedOrderTotal" to adjustedOrderTotal,
                         )
                     ).await()
                 }

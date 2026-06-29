@@ -54,6 +54,7 @@ interface TableOrder {
   createdAt?: unknown;
   updatedAt?: unknown;
   total_price?: number;
+  scheduled_time?: string | null;
 }
 
 const normalizeStatus = (status?: string) => (status || 'pending').toLowerCase();
@@ -146,6 +147,10 @@ export default function KitchenOrders() {
   const [menuItems, setMenuItems] = useState<MenuItemRole[]>([]);
   const [todayReservations, setTodayReservations] = useState<Reservation[]>([]);
   const [dessertConfig, setDessertConfig] = useState<DessertConfig | null>(null);
+  const [currentMinuteOfDay, setCurrentMinuteOfDay] = useState(() => {
+    const d = new Date();
+    return d.getHours() * 60 + d.getMinutes();
+  });
   const [activeTab, setActiveTab] = useState<KitchenTab>('pending');
   const [statusError, setStatusError] = useState<string | null>(null);
   const todayStart = useRef(getStartOfToday()).current;
@@ -153,6 +158,15 @@ export default function KitchenOrders() {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   })()).current;
+
+  // 1-minute timer to update currentMinuteOfDay (for scheduled_time filtering)
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const d = new Date();
+      setCurrentMinuteOfDay(d.getHours() * 60 + d.getMinutes());
+    }, 60_000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Load dessert config once on mount
   useEffect(() => {
@@ -193,12 +207,22 @@ export default function KitchenOrders() {
   const activeOrders = useMemo(() => {
     return [...orders]
       .filter((order) => !['paid', 'completed', 'cancelled'].includes(normalizeStatus(order.status)))
+      .filter((order) => {
+        // Hide orders whose scheduled service time hasn't arrived yet
+        const t = order.scheduled_time;
+        if (!t) return true;
+        const parts = t.split(':');
+        if (parts.length !== 2) return true;
+        const h = parseInt(parts[0], 10) || 0;
+        const m = parseInt(parts[1], 10) || 0;
+        return h * 60 + m <= currentMinuteOfDay;
+      })
       .sort((left, right) => {
         const leftTime = getTimestampMillis(left.created_at ?? left.createdAt);
         const rightTime = getTimestampMillis(right.created_at ?? right.createdAt);
         return leftTime - rightTime;
       });
-  }, [orders]);
+  }, [orders, currentMinuteOfDay]);
 
   // Filter items per order based on current user's role
   const filteredOrders = useMemo(() => {
@@ -406,14 +430,21 @@ export default function KitchenOrders() {
                   <div className="mt-1 text-sm text-muted-foreground">{order.server_name || 'Serveur inconnu'}</div>
                 </div>
 
-                <div className="text-right">
+                <div className="text-right space-y-1">
                   <div className={cn('inline-flex rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-[0.25em] font-bold', statusMeta.badge)}>
                     {statusMeta.label}
                   </div>
-                  <div className="mt-2 text-[10px] opacity-60">
+                  {order.scheduled_time && (
+                    <div className="flex justify-end">
+                      <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+                        ⏱ {order.scheduled_time}
+                      </span>
+                    </div>
+                  )}
+                  <div className="text-[10px] opacity-60">
                     {formatOrderDate(order.created_at ?? order.createdAt)}
                   </div>
-                  <div className="mt-1 text-sm font-semibold text-flamingo">
+                  <div className="text-sm font-semibold text-flamingo">
                     {formatCurrency(totalPrice)}
                   </div>
                 </div>

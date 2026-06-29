@@ -18,20 +18,32 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
+import com.example.flamingoandroid.data.models.Reservation
+import com.example.flamingoandroid.data.repository.ReservationRepository
+import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import java.util.Calendar
+
+data class DessertConfig(val dishes: Int, val persons: Int)
+data class DessertEntry(val table: String, val persons: Int, val count: Int)
 
 class KitchenDashboardViewModel(
     private val service: MenuOrderingFirebaseService = MenuOrderingFirebaseService(),
     private val authRepo: AuthRepository = AuthRepository(),
+    private val reservationRepo: ReservationRepository = ReservationRepository(),
 ) : ViewModel() {
+
+    private val db = FirebaseFirestore.getInstance()
 
     private val _orders             = MutableStateFlow<List<TableOrder>>(emptyList())
     private val _menuCategories     = MutableStateFlow<List<MenuCategory>>(emptyList())
     private val _menuItems          = MutableStateFlow<List<MenuItem>>(emptyList())
     private val _userRole           = MutableStateFlow<String?>(null)
     private val _currentMinuteOfDay = MutableStateFlow(minuteOfDay())
+    private val _dessertConfig      = MutableStateFlow<DessertConfig?>(null)
+    private val _todayReservations  = MutableStateFlow<List<Reservation>>(emptyList())
 
     private fun minuteOfDay(): Int {
         val cal = Calendar.getInstance()
@@ -95,6 +107,24 @@ class KitchenDashboardViewModel(
         )
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
+    /** Dessert plates per table based on confirmed reservations + dessert ratio config. */
+    val dessertPerTable: StateFlow<List<DessertEntry>> = combine(
+        filteredOrders, _todayReservations, _dessertConfig,
+    ) { orders: List<TableOrder>, reservations: List<Reservation>, config: DessertConfig? ->
+        if (config == null || config.persons <= 0) return@combine emptyList()
+        orders.mapNotNull { order ->
+            val tableLabel = order.table_number
+            val reservation = reservations.firstOrNull { res ->
+                val resLabel = "${res.positionType.trim()} ${res.positionNumber?.trim() ?: ""}".trim()
+                resLabel == tableLabel
+            } ?: return@mapNotNull null
+            val persons = reservation.adults + reservation.children
+            if (persons <= 0) return@mapNotNull null
+            val count = (Math.ceil(persons.toDouble() / config.persons) * config.dishes).toInt()
+            DessertEntry(tableLabel, persons, count)
+        }.sortedBy { it.table }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
     /** Sorted list of (name, total quantity) across all active filtered orders. */
     val itemTotals: StateFlow<List<Pair<String, Int>>> = filteredOrders
         .map { orders ->
@@ -117,6 +147,25 @@ class KitchenDashboardViewModel(
             while (true) {
                 delay(60_000)
                 _currentMinuteOfDay.value = minuteOfDay()
+            }
+        }
+
+        // Load dessert config once
+        viewModelScope.launch {
+            try {
+                val snap = db.collection("settings").document("app_config").get().await()
+                val dishes  = (snap.getLong("dessert_ratio_dishes")  ?: 0).toInt()
+                val persons = (snap.getLong("dessert_ratio_persons") ?: 0).toInt()
+                if (dishes > 0 && persons > 0) _dessertConfig.value = DessertConfig(dishes, persons)
+            } catch (_: Exception) {}
+        }
+
+        // Subscribe to today's confirmed reservations for dessert calculation
+        viewModelScope.launch {
+            reservationRepo.observeTodayAllArrivals().collect { arrivals ->
+                _todayReservations.value = arrivals.filter {
+                    it.status.equals("confirmed", ignoreCase = true)
+                }
             }
         }
 

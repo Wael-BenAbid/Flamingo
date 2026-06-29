@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import com.example.flamingoandroid.presentation.viewmodels.DessertEntry
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -99,11 +101,12 @@ private fun computeTotals(orders: List<TableOrder>): List<Pair<String, Int>> {
 fun KitchenDashboardScreen(
     viewModel: KitchenDashboardViewModel = viewModel(),
 ) {
-    val filteredOrders by viewModel.filteredOrders.collectAsState()
-    val itemTotals     by viewModel.itemTotals.collectAsState()
-    val pageTitle      by viewModel.pageTitle.collectAsState()
-    val isLoading      by viewModel.isLoading.collectAsState()
-    val errorMessage   by viewModel.errorMessage.collectAsState()
+    val filteredOrders  by viewModel.filteredOrders.collectAsState()
+    val itemTotals      by viewModel.itemTotals.collectAsState()
+    val dessertPerTable by viewModel.dessertPerTable.collectAsState()
+    val pageTitle       by viewModel.pageTitle.collectAsState()
+    val isLoading       by viewModel.isLoading.collectAsState()
+    val errorMessage    by viewModel.errorMessage.collectAsState()
 
     var activeTab by remember { mutableStateOf("pending") }
 
@@ -166,6 +169,49 @@ fun KitchenDashboardScreen(
                             TotalsRow(label = "EN ATTENTE",     color = Amber, totals = pendingTotals)
                         if (preparingTotals.isNotEmpty())
                             TotalsRow(label = "EN PRÉPARATION", color = Coral, totals = preparingTotals)
+                    }
+                    Divider(color = Outline, thickness = 1.dp)
+                }
+
+                // ── Desserts par table ───────────────────────────────────
+                if (dessertPerTable.isNotEmpty()) {
+                    val totalDesserts = dessertPerTable.sumOf { it.count }
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Surface)
+                            .padding(vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = "DESSERTS PAR TABLE",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Amber,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp,
+                            )
+                            Text(
+                                text = "$totalDesserts plat${if (totalDesserts > 1) "s" else ""} total",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Amber,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            items(dessertPerTable, key = { it.table }) { entry ->
+                                DessertChip(entry)
+                            }
+                        }
                     }
                     Divider(color = Outline, thickness = 1.dp)
                 }
@@ -537,6 +583,48 @@ private fun KitchenTicketCard(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun DessertChip(entry: DessertEntry) {
+    Column(
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(Raised)
+            .border(1.dp, Amber.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        Text(
+            text = entry.table,
+            color = Pearl,
+            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.labelMedium,
+            maxLines = 1,
+        )
+        Text(
+            text = "${entry.persons} pers.",
+            color = Mist,
+            style = MaterialTheme.typography.labelSmall,
+            fontSize = 9.sp,
+        )
+        Box(
+            modifier = Modifier
+                .clip(CircleShape)
+                .background(Amber)
+                .padding(horizontal = 8.dp, vertical = 2.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = "${entry.count} plt",
+                color = Color(0xFF1A0A00),
+                fontWeight = FontWeight.Black,
+                style = MaterialTheme.typography.labelSmall,
+                fontSize = 10.sp,
+            )
         }
     }
 }
