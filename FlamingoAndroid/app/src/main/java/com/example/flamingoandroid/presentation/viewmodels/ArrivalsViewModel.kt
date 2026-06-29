@@ -48,7 +48,11 @@ class ArrivalsViewModel(
                     .sortedBy { it.time }
                 _confirmedArrivals.value = all
                     .filter { it.status.equals("confirmed", ignoreCase = true) }
-                    .sortedBy { it.positionType + it.positionNumber }
+                    .sortedWith(
+                        compareBy<Reservation> { it.positionType }
+                            .thenBy { it.positionNumber?.toIntOrNull() ?: Int.MAX_VALUE }
+                            .thenBy { it.positionNumber ?: "" }
+                    )
                 _cancelledArrivals.value = all
                     .filter { it.status.equals("cancelled", ignoreCase = true) }
                     .sortedBy { it.time }

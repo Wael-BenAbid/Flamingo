@@ -65,7 +65,7 @@ class PaymentViewModel(
             !it.positionNumber.isNullOrBlank()
         }
         val reservationByTable = confirmed.associate { r ->
-            "${r.positionType.trim()} ${r.positionNumber!!.trim()}" to r
+            "${r.positionType.trim()} ${r.positionNumber?.trim() ?: ""}".trim() to r
         }
         val orderByTable = orders.associate { it.table_number to it }
 
@@ -246,84 +246,93 @@ class PaymentViewModel(
                 val now      = Timestamp.now()
                 val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
                 val reservationTotal = adultUnitPrice * adults + childUnitPrice * children
+                val batch = db.batch()
 
-                // Sales records for each menu item
+                // Menu item sales (original prices for product tracking)
                 cartItems.forEach { item ->
                     if (item.quantity > 0) {
-                        db.collection("sales").add(
-                            mapOf(
-                                "productName"   to item.name,
-                                "productId"     to item.item_id,
-                                "quantity"      to item.quantity,
-                                "unitSellPrice" to item.unit_price,
-                                "unitBuyPrice"  to 0.0,
-                                "totalPrice"    to item.unit_price * item.quantity,
-                                "totalCost"     to 0.0,
-                                "date"          to todayStr,
-                                "source"        to "walkin_payment",
-                                "tableLabel"    to tableLabel,
-                                "createdAt"     to now,
-                            )
-                        ).await()
+                        val ref = db.collection("sales").document()
+                        batch.set(ref, mapOf(
+                            "productName"   to item.name,
+                            "productId"     to item.item_id,
+                            "quantity"      to item.quantity,
+                            "unitSellPrice" to item.unit_price,
+                            "unitBuyPrice"  to 0.0,
+                            "totalPrice"    to item.unit_price * item.quantity,
+                            "totalCost"     to 0.0,
+                            "date"          to todayStr,
+                            "source"        to "walkin_payment",
+                            "tableLabel"    to tableLabel,
+                            "createdAt"     to now,
+                        ))
                     }
                 }
 
-                // Entry fee sale record
+                // Entry fee — stored at undiscounted amount; adjustment below corrects bilan
                 if (reservationTotal > 0) {
-                    db.collection("sales").add(
-                        mapOf(
-                            "productName"   to "Entrée ($tableLabel)",
-                            "productId"     to "walkin-entry",
-                            "quantity"      to 1,
-                            "unitSellPrice" to reservationTotal,
-                            "unitBuyPrice"  to 0.0,
-                            "totalPrice"    to reservationTotal,
-                            "totalCost"     to 0.0,
-                            "date"          to todayStr,
-                            "source"        to "walkin_entry",
-                            "tableLabel"    to tableLabel,
-                            "adults"        to adults,
-                            "children"      to children,
-                            "clientName"    to clientName.ifBlank { "—" },
-                            "discountPercent" to discountPercent,
-                            "discountAmount"  to discountAmount,
-                            "finalTotal"      to finalTotal,
-                            "remarque"        to remarque.trim(),
-                            "createdAt"       to now,
-                        )
-                    ).await()
+                    val ref = db.collection("sales").document()
+                    batch.set(ref, mapOf(
+                        "productName"   to "Entrée ($tableLabel)",
+                        "productId"     to "walkin-entry",
+                        "quantity"      to 1,
+                        "unitSellPrice" to reservationTotal,
+                        "unitBuyPrice"  to 0.0,
+                        "totalPrice"    to reservationTotal,
+                        "totalCost"     to 0.0,
+                        "date"          to todayStr,
+                        "source"        to "walkin_entry",
+                        "tableLabel"    to tableLabel,
+                        "adults"        to adults,
+                        "children"      to children,
+                        "clientName"    to clientName.ifBlank { "—" },
+                        "createdAt"     to now,
+                    ))
                 }
 
-                // Mark tile as paid in the payment grid
-                db.collection("table_orders").add(
-                    mapOf(
-                        "table_number"    to tableLabel,
-                        "server_id"       to "",
-                        "server_name"     to clientName.ifBlank { "Walk-in" },
-                        "status"          to "paid",
-                        "items"           to cartItems.map {
-                            mapOf(
-                                "item_id"    to it.item_id,
-                                "name"       to it.name,
-                                "quantity"   to it.quantity,
-                                "unit_price" to it.unit_price,
-                                "notes"      to it.notes,
-                            )
-                        },
-                        "total_price"     to finalTotal,
-                        "created_at"      to now,
-                        "updated_at"      to now,
-                        "paidAt"          to now,
-                        "grandTotal"      to finalTotal,
-                        "discountPercent" to discountPercent,
-                        "discountAmount"  to discountAmount,
-                        "remarque"        to remarque.trim(),
-                        "clientName"      to clientName.ifBlank { "—" },
-                        "adults"          to adults,
-                        "children"        to children,
-                        "source"          to "walkin",
-                    )
-                ).await()
+                // Discount adjustment record — ensures bilan deducts walk-in discounts correctly
+                if (discountAmount > 0.009) {
+                    val ref = db.collection("sales").document()
+                    batch.set(ref, mapOf(
+                        "productName"   to "Remise $discountPercent% ($tableLabel)",
+                        "productId"     to "table-adjustment",
+                        "quantity"      to 1,
+                        "unitSellPrice" to -discountAmount,
+                        "unitBuyPrice"  to 0.0,
+                        "totalPrice"    to -discountAmount,
+                        "totalCost"     to 0.0,
+                        "date"          to todayStr,
+                        "source"        to "table_adjustment",
+                        "tableLabel"    to tableLabel,
+                        "createdAt"     to now,
+                    ))
+                }
+
+                // Mark tile as paid — atomic with all sales records above
+                val orderRef = db.collection("table_orders").document()
+                batch.set(orderRef, mapOf(
+                    "table_number"    to tableLabel,
+                    "server_id"       to "",
+                    "server_name"     to clientName.ifBlank { "Walk-in" },
+                    "status"          to "paid",
+                    "items"           to cartItems.map {
+                        mapOf("item_id" to it.item_id, "name" to it.name,
+                              "quantity" to it.quantity, "unit_price" to it.unit_price, "notes" to it.notes)
+                    },
+                    "total_price"     to finalTotal,
+                    "created_at"      to now,
+                    "updated_at"      to now,
+                    "paidAt"          to now,
+                    "grandTotal"      to finalTotal,
+                    "discountPercent" to discountPercent,
+                    "discountAmount"  to discountAmount,
+                    "remarque"        to remarque.trim(),
+                    "clientName"      to clientName.ifBlank { "—" },
+                    "adults"          to adults,
+                    "children"        to children,
+                    "source"          to "walkin",
+                ))
+
+                batch.commit().await()
 
                 _paidTables.value = _paidTables.value + tableLabel
                 _action.value = PaymentAction.Success(tableLabel)

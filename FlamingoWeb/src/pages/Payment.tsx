@@ -365,54 +365,58 @@ function WalkInDialog({
     setIsPaying(true);
     try {
       const todayStr = format(startOfToday(), 'yyyy-MM-dd');
-      const now = Timestamp.now();
-      // Menu item sales
+      const now      = Timestamp.now();
+      const batch    = writeBatch(db);
+
+      // Menu item sales (original prices for product tracking)
       for (const line of cartLines) {
-        await addDoc(collection(db, 'sales'), {
+        batch.set(doc(collection(db, 'sales')), {
           productName: line.name, productId: line.item_id,
           quantity: line.quantity, unitSellPrice: line.unit_price, unitBuyPrice: 0,
           totalPrice: line.unit_price * line.quantity, totalCost: 0,
           date: todayStr, source: 'walkin_payment', tableLabel, createdAt: now,
         });
       }
-      // Entry fee sale record
+      // Entry fee — stored at UNDISCOUNTED amount; adjustment written separately
       if (reservationTotal > 0) {
-        await addDoc(collection(db, 'sales'), {
+        batch.set(doc(collection(db, 'sales')), {
           productName: `Entrée (${tableLabel})`, productId: 'walkin-entry',
           quantity: 1, unitSellPrice: reservationTotal, unitBuyPrice: 0,
           totalPrice: reservationTotal, totalCost: 0,
           date: todayStr, source: 'walkin_entry', tableLabel,
-          adults, children, clientName: clientName.trim() || '—',
-          discountPercent, discountAmount, finalTotal, createdAt: now,
+          adults, children, clientName: clientName.trim() || '—', createdAt: now,
         });
       }
-      // Mark tile as paid in the payment grid
-      await addDoc(collection(db, 'table_orders'), {
-        table_number: tableLabel,
-        server_id: '',
-        server_name: clientName.trim() || 'Walk-in',
-        status: 'paid',
+      // Discount adjustment record — makes bilan deduct the walk-in discount correctly
+      if (discountAmount > 0.009) {
+        batch.set(doc(collection(db, 'sales')), {
+          productName: `Remise ${discountPercent}% — ${tableLabel}`,
+          productId: 'table-adjustment',
+          quantity: 1, unitSellPrice: -discountAmount, unitBuyPrice: 0,
+          totalPrice: -discountAmount, totalCost: 0,
+          date: todayStr, source: 'table_adjustment', tableLabel, createdAt: now,
+        });
+      }
+      // Mark table as paid (single document — atomically)
+      batch.set(doc(collection(db, 'table_orders')), {
+        table_number: tableLabel, server_id: '',
+        server_name: clientName.trim() || 'Walk-in', status: 'paid',
         items: cartLines.map((l) => ({
           item_id: l.item_id, name: l.name,
           quantity: l.quantity, unit_price: l.unit_price, notes: '',
         })),
-        total_price: finalTotal,
-        created_at: now,
-        updated_at: now,
-        paidAt: now,
-        grandTotal: finalTotal,
-        discountPercent,
-        discountAmount,
-        remarque: remarque.trim(),
-        clientName: clientName.trim() || '—',
-        adults,
-        children,
-        source: 'walkin',
+        total_price: finalTotal, created_at: now, updated_at: now, paidAt: now,
+        grandTotal: finalTotal, discountPercent, discountAmount,
+        remarque: remarque.trim(), clientName: clientName.trim() || '—',
+        adults, children, source: 'walkin',
       });
+
+      await batch.commit();
       setPaid(true);
     } catch (err) {
-      window.alert("Erreur lors de l'enregistrement du paiement.");
-      console.error(err);
+      const msg = err instanceof Error ? err.message : 'Erreur inconnue';
+      window.alert(`Erreur lors de l'enregistrement du paiement : ${msg}`);
+      console.error('WalkIn handlePay error:', err);
     } finally {
       setIsPaying(false);
     }
