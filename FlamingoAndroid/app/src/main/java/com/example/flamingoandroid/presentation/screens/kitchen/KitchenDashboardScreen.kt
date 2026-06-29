@@ -202,53 +202,32 @@ fun KitchenDashboardScreen(
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
+                    // Onglets commandes (En attente / En préparation / Prêtes)
                     tabs.forEach { tab ->
                         val count = tabOrders[tab.status]?.size ?: 0
                         val isActive = activeTab == tab.status
-                        val textOnActive = when (tab.color) {
-                            Color(0xFF2EC4B6) -> Color(0xFF001E1B) // dark on teal
-                            else              -> Color(0xFF1A0A00)  // dark on amber/coral
-                        }
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(20.dp))
-                                .background(if (isActive) tab.color else Raised)
-                                .border(
-                                    width = 1.dp,
-                                    color = if (isActive) tab.color else tab.color.copy(alpha = 0.35f),
-                                    shape = RoundedCornerShape(20.dp),
-                                )
-                                .clickable { activeTab = tab.status }
-                                .padding(horizontal = 14.dp, vertical = 8.dp),
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            ) {
-                                Text(
-                                    text = tab.label,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = if (isActive) textOnActive else tab.color,
-                                    fontWeight = FontWeight.SemiBold,
-                                )
-                                if (count > 0) {
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(CircleShape)
-                                            .background(if (isActive) textOnActive.copy(alpha = 0.18f) else tab.color.copy(alpha = 0.18f))
-                                            .padding(horizontal = 6.dp, vertical = 1.dp),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        Text(
-                                            text = "$count",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = if (isActive) textOnActive else tab.color,
-                                            fontWeight = FontWeight.Bold,
-                                        )
-                                    }
-                                }
-                            }
-                        }
+                        val darkOnActive = Color(0xFF1A0A00)
+                        KitchenTabChip(
+                            label    = tab.label,
+                            count    = count,
+                            color    = tab.color,
+                            isActive = isActive,
+                            darkText = darkOnActive,
+                            onClick  = { activeTab = tab.status },
+                        )
+                    }
+
+                    // Onglet Desserts — visible uniquement si des desserts existent
+                    if (dessertPerTable.isNotEmpty()) {
+                        val isActive = activeTab == "desserts"
+                        KitchenTabChip(
+                            label    = "🍮 Desserts",
+                            count    = remainingDesserts,
+                            color    = if (remainingDesserts > 0) Amber else Jade,
+                            isActive = isActive,
+                            darkText = Color(0xFF1A0A00),
+                            onClick  = { activeTab = "desserts" },
+                        )
                     }
                 }
                 Divider(color = Outline, thickness = 1.dp)
@@ -281,8 +260,8 @@ fun KitchenDashboardScreen(
                     contentPadding = PaddingValues(16.dp),
                     modifier = Modifier.fillMaxSize(),
                 ) {
-                    // ── Desserts — toujours visibles en haut de la liste ──
-                    if (dessertPerTable.isNotEmpty()) {
+                    if (activeTab == "desserts") {
+                        // ── Onglet Desserts ────────────────────────────────
                         item(key = "dessert-header") {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -306,57 +285,111 @@ fun KitchenDashboardScreen(
                                 )
                             }
                         }
-                        items(dessertPerTable, key = { "dessert-${it.table}" }) { entry ->
-                            DessertCard(
-                                entry    = entry,
-                                isServed = entry.table in servedDessertTables,
-                                onSortir = { viewModel.markDessertServed(entry.table) },
-                                onRevenir= { viewModel.unmarkDessertServed(entry.table) },
-                            )
-                        }
-                        item(key = "dessert-divider") {
-                            Divider(color = Outline.copy(alpha = 0.5f))
-                        }
-                    }
-
-                    // ── Commandes de l'onglet sélectionné ─────────────────
-                    if (visibleOrders.isEmpty()) {
-                        item(key = "orders-empty") {
-                            Column(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                            ) {
-                                Icon(
-                                    Icons.Default.CheckCircle,
-                                    contentDescription = null,
-                                    tint = Teal.copy(alpha = 0.5f),
-                                    modifier = Modifier.size(52.dp),
-                                )
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Text(
-                                    text = "Aucune commande « ${tabs.find { it.status == activeTab }?.label ?: activeTab} »",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = Pearl,
-                                    fontWeight = FontWeight.Bold,
-                                    textAlign = TextAlign.Center,
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = "Les nouvelles commandes apparaîtront ici",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = Mist,
-                                    textAlign = TextAlign.Center,
+                        if (dessertPerTable.isEmpty()) {
+                            item(key = "desserts-empty") {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    Text("Aucun dessert à afficher", color = Mist,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold)
+                                    Spacer(Modifier.height(6.dp))
+                                    Text("Configurez le ratio dans Menus & Tables",
+                                        color = Mist.copy(alpha = 0.6f),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        textAlign = TextAlign.Center)
+                                }
+                            }
+                        } else {
+                            items(dessertPerTable, key = { "dessert-${it.table}" }) { entry ->
+                                DessertCard(
+                                    entry    = entry,
+                                    isServed = entry.table in servedDessertTables,
+                                    onSortir = { viewModel.markDessertServed(entry.table) },
+                                    onRevenir= { viewModel.unmarkDessertServed(entry.table) },
                                 )
                             }
                         }
                     } else {
-                        items(visibleOrders, key = { it.id }) { order ->
-                            KitchenTicketCard(
-                                order = order,
-                                onSetStatus = { status -> viewModel.setStatus(order.id, status) },
-                            )
+                        // ── Onglets commandes (En attente / En préparation / Prêtes) ──
+                        if (visibleOrders.isEmpty()) {
+                            item(key = "orders-empty") {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    Icon(Icons.Default.CheckCircle, contentDescription = null,
+                                        tint = Teal.copy(alpha = 0.5f), modifier = Modifier.size(52.dp))
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Text(
+                                        text = "Aucune commande « ${tabs.find { it.status == activeTab }?.label ?: activeTab} »",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = Pearl, fontWeight = FontWeight.Bold,
+                                        textAlign = TextAlign.Center,
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text("Les nouvelles commandes apparaîtront ici",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Mist, textAlign = TextAlign.Center)
+                                }
+                            }
+                        } else {
+                            items(visibleOrders, key = { it.id }) { order ->
+                                KitchenTicketCard(
+                                    order = order,
+                                    onSetStatus = { status -> viewModel.setStatus(order.id, status) },
+                                )
+                            }
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun KitchenTabChip(
+    label: String,
+    count: Int,
+    color: Color,
+    isActive: Boolean,
+    darkText: Color,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(if (isActive) color else Raised)
+            .border(1.dp, if (isActive) color else color.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
+            .clickable { onClick() }
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = if (isActive) darkText else color,
+                fontWeight = FontWeight.SemiBold,
+            )
+            if (count > 0) {
+                Box(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(if (isActive) darkText.copy(alpha = 0.18f) else color.copy(alpha = 0.18f))
+                        .padding(horizontal = 6.dp, vertical = 1.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "$count",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (isActive) darkText else color,
+                        fontWeight = FontWeight.Bold,
+                    )
                 }
             }
         }
