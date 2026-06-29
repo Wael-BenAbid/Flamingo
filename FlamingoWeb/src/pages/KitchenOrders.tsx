@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { doc, getDoc, Timestamp, updateDoc, where } from 'firebase/firestore';
 import { formatCurrency, formatDate } from '../../shared/constants';
 import { useFirestore } from '../hooks/useFirestore';
@@ -58,6 +58,28 @@ interface TableOrder {
 }
 
 const normalizeStatus = (status?: string) => (status || 'pending').toLowerCase();
+
+/** Joue un "ding ding" (deux tons) via Web Audio API — aucun fichier audio requis. */
+function playKitchenSound() {
+  try {
+    const ctx  = new AudioContext();
+    const play = (freq: number, start: number) => {
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + start);
+      gain.gain.setValueAtTime(0.5, ctx.currentTime + start);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + 0.35);
+      osc.start(ctx.currentTime + start);
+      osc.stop(ctx.currentTime + start + 0.35);
+    };
+    play(880, 0);       // premier ding
+    play(660, 0.38);    // deuxième ding
+    setTimeout(() => ctx.close(), 1000);
+  } catch { /* navigateur sans AudioContext — silencieux */ }
+}
 
 const getTimestampMillis = (value?: unknown) => {
   if (!value) {
@@ -151,6 +173,17 @@ export default function KitchenOrders() {
     const d = new Date();
     return d.getHours() * 60 + d.getMinutes();
   });
+
+  // 🔔 Notification sonore — nouvelles commandes (cuisinier / barman)
+  const prevOrderIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (filteredOrders.length === 0) { prevOrderIdsRef.current = new Set(); return; }
+    const currentIds = new Set(filteredOrders.map((o) => o.id));
+    if (prevOrderIdsRef.current.size > 0 && filteredOrders.some((o) => !prevOrderIdsRef.current.has(o.id))) {
+      playKitchenSound();
+    }
+    prevOrderIdsRef.current = currentIds;
+  }, [filteredOrders]);
   const [activeTab, setActiveTab] = useState<KitchenTab>('pending');
   const [statusError, setStatusError] = useState<string | null>(null);
   const todayStart = useRef(getStartOfToday()).current;

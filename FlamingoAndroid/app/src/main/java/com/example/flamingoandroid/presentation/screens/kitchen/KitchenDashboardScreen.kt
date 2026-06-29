@@ -1,5 +1,7 @@
 package com.example.flamingoandroid.presentation.screens.kitchen
 
+import android.media.RingtoneManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -109,6 +111,18 @@ fun KitchenDashboardScreen(
     val pageTitle           by viewModel.pageTitle.collectAsState()
     val isLoading           by viewModel.isLoading.collectAsState()
     val errorMessage        by viewModel.errorMessage.collectAsState()
+
+    // 🔔 Notification sonore — nouvelle commande reçue (cuisinier / barman)
+    val context = LocalContext.current
+    LaunchedEffect(Unit) {
+        viewModel.newOrderEvent.collect {
+            try {
+                val uri     = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+                val ringtone = RingtoneManager.getRingtone(context, uri)
+                ringtone?.play()
+            } catch (_: Exception) { /* device sans son — ignorer */ }
+        }
+    }
 
     var activeTab by remember { mutableStateOf("pending") }
 

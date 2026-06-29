@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { collection, doc, getDocs, query, Timestamp, where, writeBatch } from 'firebase/firestore';
+import { collection, doc, getDocs, query, Timestamp, updateDoc, where, writeBatch } from 'firebase/firestore';
+import { useAuth } from '../context/AuthContext';
 import { format, startOfToday } from 'date-fns';
 import { CheckCircle2, ChevronDown, CreditCard, Layers, Loader2, Printer, UserPlus, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -751,9 +752,13 @@ function InvoiceDialog({
     0,
   );
 
-  const [isPaying, setIsPaying] = useState(false);
-  const [paid, setPaid] = useState(!!reservation?.paidAt || order?.status === 'paid');
-  const [remarque, setRemarque] = useState('');
+  const { role } = useAuth();
+  const canVoidPayment = role === 'admin' || role === 'responsable';
+
+  const [isPaying, setIsPaying]       = useState(false);
+  const [isVoiding, setIsVoiding]     = useState(false);
+  const [paid, setPaid]               = useState(!!reservation?.paidAt || order?.status === 'paid');
+  const [remarque, setRemarque]       = useState('');
   const [discountPercent, setDiscountPercent] = useState(0);
   const [customAdultPrice, setCustomAdultPrice] = useState(positionPrices?.price ?? 0);
   const [customChildPrice, setCustomChildPrice] = useState(positionPrices?.childPrice ?? 0);
@@ -877,6 +882,33 @@ function InvoiceDialog({
       console.error('handlePay error:', err);
     } finally {
       setIsPaying(false);
+    }
+  };
+
+  // Annulation de paiement (admin / responsable uniquement)
+  const handleVoidPayment = async () => {
+    if (!window.confirm('Annuler ce paiement ? La table repassera en statut "Prêt".')) return;
+    setIsVoiding(true);
+    try {
+      const now = Timestamp.now();
+      const voidBatch = writeBatch(db);
+      if (order?.id) {
+        voidBatch.update(doc(db, 'table_orders', order.id), {
+          status: 'ready', paidAt: null, voidedAt: now, updated_at: now,
+        });
+      }
+      if (reservation?.id) {
+        voidBatch.update(doc(db, 'reservations', reservation.id), {
+          paidAt: null, grandTotal: null,
+        });
+      }
+      await voidBatch.commit();
+      setPaid(false);
+    } catch (err) {
+      window.alert('Erreur lors de l\'annulation du paiement.');
+      console.error(err);
+    } finally {
+      setIsVoiding(false);
     }
   };
 
@@ -1129,6 +1161,21 @@ function InvoiceDialog({
             </div>
           </div>
         </div>
+
+        {/* Annuler paiement — admin/responsable uniquement */}
+        {paid && canVoidPayment && (
+          <div className="px-4 pt-3 border-t border-red-100 bg-red-50/40 shrink-0">
+            <button
+              type="button"
+              onClick={handleVoidPayment}
+              disabled={isVoiding}
+              className="w-full h-9 text-[10px] uppercase font-bold tracking-[0.2em] text-red-600 border border-red-200 hover:bg-red-50 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {isVoiding ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+              ⚠ Annuler le paiement
+            </button>
+          </div>
+        )}
 
         {/* Footer buttons */}
         <div className="flex gap-3 p-4 border-t border-black/5 bg-slate-50/40 shrink-0">

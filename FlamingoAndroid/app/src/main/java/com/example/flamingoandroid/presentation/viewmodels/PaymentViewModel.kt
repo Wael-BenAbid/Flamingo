@@ -8,8 +8,10 @@ import com.example.flamingoandroid.data.models.Position
 import com.example.flamingoandroid.data.models.Reservation
 import com.example.flamingoandroid.data.models.TableOrder
 import com.example.flamingoandroid.data.models.TableOrderItem
+import com.example.flamingoandroid.data.repository.AuthRepository
 import com.example.flamingoandroid.data.repository.ReservationRepository
 import com.example.flamingoandroid.data.repository.TableRepository
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,9 +31,9 @@ data class PaymentUiState(
     val positions: List<Position> = emptyList(),
     val reservationByTable: Map<String, Reservation> = emptyMap(),
     val orderByTable: Map<String, TableOrder> = emptyMap(),
-    /** Tables paid in this session (persists even after order leaves active flow) */
     val paidTables: Set<String> = emptySet(),
     val isLoading: Boolean = true,
+    val userRole: String = "",
 )
 
 sealed class PaymentAction {
@@ -42,22 +44,33 @@ sealed class PaymentAction {
 class PaymentViewModel(
     private val tableRepo: TableRepository = TableRepository(),
     private val reservationRepo: ReservationRepository = ReservationRepository(),
+    private val authRepo: AuthRepository = AuthRepository(),
 ) : ViewModel() {
 
     private val db = FirebaseFirestore.getInstance()
     private val _paidTables = MutableStateFlow<Set<String>>(emptySet())
-    private val _action = MutableStateFlow<PaymentAction?>(null)
+    private val _action     = MutableStateFlow<PaymentAction?>(null)
+    private val _userRole   = MutableStateFlow("")
     val action: StateFlow<PaymentAction?> = _action.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            val user = FirebaseAuth.getInstance().currentUser
+            _userRole.value = authRepo.getCurrentUserRole(user)
+        }
+    }
 
     val uiState: StateFlow<PaymentUiState> = combine(
         tableRepo.listenToPositions(),
         tableRepo.listenToActiveOrders(),
         reservationRepo.observeTodayAllArrivals(),
         _paidTables,
+        _userRole,
     ) { positions: List<Position>,
         orders: List<TableOrder>,
         arrivals: List<Reservation>,
-        paidTables: Set<String> ->
+        paidTables: Set<String>,
+        userRole: String ->
 
         val confirmed = arrivals.filter {
             it.status.equals("confirmed", ignoreCase = true) &&
@@ -70,11 +83,12 @@ class PaymentViewModel(
         val orderByTable = orders.associate { it.table_number to it }
 
         PaymentUiState(
-            positions      = positions.sortedBy { it.type },
+            positions          = positions.sortedBy { it.type },
             reservationByTable = reservationByTable,
-            orderByTable   = orderByTable,
-            paidTables     = paidTables,
-            isLoading      = false,
+            orderByTable       = orderByTable,
+            paidTables         = paidTables,
+            isLoading          = false,
+            userRole           = userRole,
         )
     }.stateIn(
         scope          = viewModelScope,
@@ -182,6 +196,30 @@ class PaymentViewModel(
                 _action.value = PaymentAction.Error("Délai dépassé — vérifiez la connexion réseau")
             } catch (e: Exception) {
                 _action.value = PaymentAction.Error(e.message ?: "Erreur inconnue")
+            }
+        }
+    }
+
+    /** Annuler un paiement — visible admin/responsable uniquement. Remet la table en état "ready". */
+    fun cancelPayment(tableLabel: String, order: TableOrder?) {
+        viewModelScope.launch {
+            try {
+                withTimeout(10_000) {
+                    order?.id?.takeIf { it.isNotBlank() }?.let { orderId ->
+                        db.collection("table_orders").document(orderId).update(
+                            mapOf(
+                                "status"    to "ready",
+                                "paidAt"    to null,
+                                "voidedAt"  to Timestamp.now(),
+                                "updatedAt" to Timestamp.now(),
+                            )
+                        ).await()
+                    }
+                    _paidTables.value = _paidTables.value - tableLabel
+                    _action.value = PaymentAction.Success(tableLabel)
+                }
+            } catch (e: Exception) {
+                _action.value = PaymentAction.Error("Annulation échouée : ${e.message}")
             }
         }
     }

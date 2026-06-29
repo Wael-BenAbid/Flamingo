@@ -189,6 +189,7 @@ fun PaymentScreen(
             order       = order,
             position    = position,
             isPaid      = tableLabel in state.paidTables || order?.status == "paid",
+            userRole    = state.userRole,
             onDismiss   = { invoiceTable = null },
             onPay       = { discountPct, discountAmt, finalTotal, remarque,
                             custAdultPx, custChildPx, custOrdTotal ->
@@ -204,6 +205,9 @@ fun PaymentScreen(
                     customChildPrice   = custChildPx,
                     adjustedOrderTotal = custOrdTotal,
                 )
+            },
+            onCancelPayment = {
+                viewModel.cancelPayment(tableLabel, order)
             },
         )
     }
@@ -454,8 +458,10 @@ private fun InvoiceDialog(
     position: Position?,
     isPaid: Boolean,
     onDismiss: () -> Unit,
+    userRole: String = "",
     onPay: (discountPct: Int, discountAmt: Double, finalTotal: Double, remarque: String,
              customAdultPrice: Double, customChildPrice: Double, customOrderTotal: Double) -> Unit,
+    onCancelPayment: () -> Unit = {},
 ) {
     val context = LocalContext.current
 
@@ -718,6 +724,25 @@ private fun InvoiceDialog(
                 }
 
                 // ── Footer buttons ────────────────────────────────────────
+                // Annuler paiement — admin/responsable uniquement, table déjà payée
+                if (isPaid && userRole in listOf("admin", "responsable")) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Crimson.copy(alpha = 0.07f))
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.Center,
+                    ) {
+                        TextButton(onClick = onCancelPayment) {
+                            Text(
+                                "⚠ Annuler le paiement",
+                                color = Crimson,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                    }
+                }
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()

@@ -14,7 +14,8 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { format, startOfToday, startOfMonth, endOfMonth } from 'date-fns';
+import { format, startOfToday, startOfMonth, endOfMonth, subDays } from 'date-fns';
+import { where } from 'firebase/firestore';
 import { useFirestore } from './useFirestore';
 
 // ── Types ──────────────────────────────────────────────────────────────
@@ -68,11 +69,15 @@ export function useReservations() {
 
   useEffect(() => {
     setIsLoading(true);
+    // Load positions (no date filter needed — small collection)
     const unsubPos = subscribe<ReservationPosition>('positions', (data) => setPositions(data));
-    const unsubRes = subscribe<Reservation>('reservations', (data) => {
-      setReservations(data);
-      setIsLoading(false);
-    });
+    // Load reservations from last 90 days + future to avoid loading entire history
+    const cutoff = format(subDays(startOfToday(), 90), 'yyyy-MM-dd');
+    const unsubRes = subscribe<Reservation>(
+      'reservations',
+      (data) => { setReservations(data); setIsLoading(false); },
+      [where('date', '>=', cutoff)],
+    );
     return () => {
       unsubPos();
       unsubRes();
@@ -174,13 +179,28 @@ export function useReservations() {
   const createReservation = useCallback(
     async (data: ReservationFormData): Promise<string | null> => {
       try {
+        // Conflict check: block double-booking for same position on same day
+        if (data.positionType && data.positionNumber?.trim()) {
+          const conflict = reservations.some(
+            (r) =>
+              r.date === data.date &&
+              r.positionType === data.positionType &&
+              r.positionNumber === data.positionNumber?.trim() &&
+              !['cancelled', 'absent'].includes(r.status),
+          );
+          if (conflict) {
+            throw new Error(
+              `${data.positionType} N°${data.positionNumber} est déjà réservé(e) pour le ${data.date}`,
+            );
+          }
+        }
         const id = await create('reservations', data);
         return id ?? null;
-      } catch {
-        return null;
+      } catch (err) {
+        throw err; // re-throw so the form can display the error
       }
     },
-    [create],
+    [create, reservations],
   );
 
   const updateReservation = useCallback(

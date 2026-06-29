@@ -21,7 +21,11 @@ import kotlinx.coroutines.flow.stateIn
 import com.example.flamingoandroid.data.models.Reservation
 import com.example.flamingoandroid.data.repository.ReservationRepository
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import java.util.Calendar
@@ -44,6 +48,10 @@ class KitchenDashboardViewModel(
     private val _currentMinuteOfDay = MutableStateFlow(minuteOfDay())
     private val _dessertConfig      = MutableStateFlow<DessertConfig?>(null)
     private val _todayReservations  = MutableStateFlow<List<Reservation>>(emptyList())
+
+    // Sound event — emitted when new orders appear (for cuisinier/barman alert)
+    private val _newOrderEvent = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val newOrderEvent: SharedFlow<Unit> = _newOrderEvent
 
     private fun minuteOfDay(): Int {
         val cal = Calendar.getInstance()
@@ -150,14 +158,30 @@ class KitchenDashboardViewModel(
             }
         }
 
-        // Load dessert config once
+        // Dessert config — reactive listener (changes apply instantly without app restart)
+        callbackFlow {
+            val reg = db.collection("settings").document("app_config")
+                .addSnapshotListener { snap, _ ->
+                    val dishes  = (snap?.getLong("dessert_ratio_dishes")  ?: 0).toInt()
+                    val persons = (snap?.getLong("dessert_ratio_persons") ?: 0).toInt()
+                    trySend(if (dishes > 0 && persons > 0) DessertConfig(dishes, persons) else null)
+                }
+            awaitClose { reg.remove() }
+        }
+            .onEach { _dessertConfig.value = it }
+            .catch { }
+            .launchIn(viewModelScope)
+
+        // Sound notification: detect new orders appearing in filteredOrders
         viewModelScope.launch {
-            try {
-                val snap = db.collection("settings").document("app_config").get().await()
-                val dishes  = (snap.getLong("dessert_ratio_dishes")  ?: 0).toInt()
-                val persons = (snap.getLong("dessert_ratio_persons") ?: 0).toInt()
-                if (dishes > 0 && persons > 0) _dessertConfig.value = DessertConfig(dishes, persons)
-            } catch (_: Exception) {}
+            var knownIds = emptySet<String>()
+            filteredOrders.collect { orders ->
+                val currentIds = orders.map { it.id }.toSet()
+                if (knownIds.isNotEmpty() && currentIds.any { it !in knownIds }) {
+                    _newOrderEvent.tryEmit(Unit)
+                }
+                knownIds = currentIds
+            }
         }
 
         // Subscribe to today's confirmed reservations for dessert calculation

@@ -29,10 +29,17 @@ class ReservationRepository {
 
     // ── REAL-TIME FLOWS ──────────────────────────────────────────────
 
-    /** Emits the full reservation list whenever Firestore changes. */
+    /** Emits reservations from the last 90 days + future (pagination to avoid loading all history). */
     fun observeReservations(): Flow<List<Reservation>> = callbackFlow {
+        val cutoff = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(
+            java.util.Calendar.getInstance().apply {
+                add(java.util.Calendar.DAY_OF_YEAR, -90)
+            }.time
+        )
         val listener = db.collection("reservations")
+            .whereGreaterThanOrEqualTo("date", cutoff)
             .orderBy("date", Query.Direction.DESCENDING)
+            .limit(1000)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) { trySend(emptyList()); return@addSnapshotListener }
                 trySend(
@@ -115,6 +122,21 @@ class ReservationRepository {
     // ── RESERVATION MUTATIONS ─────────────────────────────────────────
 
     suspend fun addReservation(reservation: Reservation): Result<String> = try {
+        // Conflict check: block double-booking for same position on same day
+        if (reservation.positionType.isNotBlank() && !reservation.positionNumber.isNullOrBlank()) {
+            val conflict = db.collection("reservations")
+                .whereEqualTo("date", reservation.date)
+                .whereEqualTo("positionType", reservation.positionType)
+                .whereEqualTo("positionNumber", reservation.positionNumber!!)
+                .get().await()
+                .documents
+                .any { doc -> doc.getString("status") !in listOf("cancelled", "absent") }
+            if (conflict) {
+                return Result.failure(
+                    Exception("${reservation.positionType} N°${reservation.positionNumber} est déjà réservé(e) pour le ${reservation.date}")
+                )
+            }
+        }
         val now = Timestamp.now()
         val ref = db.collection("reservations")
             .add(reservation.copy(createdAt = now, updatedAt = now)).await()
