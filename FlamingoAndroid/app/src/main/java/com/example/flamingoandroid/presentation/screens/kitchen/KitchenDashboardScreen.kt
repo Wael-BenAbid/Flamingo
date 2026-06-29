@@ -465,9 +465,9 @@ private fun KitchenTicketCard(
                     }
                     Text(
                         text = elapsedLabel,
-                        style = MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.labelMedium,
                         color = urgencyColor,
-                        fontWeight = FontWeight.SemiBold,
+                        fontWeight = FontWeight.Bold,
                     )
                     if (!order.scheduled_time.isNullOrBlank()) {
                         Box(
@@ -495,40 +495,43 @@ private fun KitchenTicketCard(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(14.dp))
                             .background(Raised)
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.Top,
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        // Quantité — grande et lisible à gauche
+                        Box(
+                            modifier = Modifier
+                                .size(52.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Amber),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = "${item.quantity}",
+                                color = Color(0xFF1A0800),
+                                fontWeight = FontWeight.Black,
+                                style = MaterialTheme.typography.headlineMedium,
+                            )
+                        }
+                        // Nom + note
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = item.name,
-                                fontWeight = FontWeight.SemiBold,
+                                fontWeight = FontWeight.Bold,
                                 color = Pearl,
-                                style = MaterialTheme.typography.bodyMedium,
+                                style = MaterialTheme.typography.titleMedium,
                             )
                             if (item.notes.isNotBlank()) {
-                                Spacer(modifier = Modifier.height(2.dp))
+                                Spacer(modifier = Modifier.height(3.dp))
                                 Text(
-                                    text = item.notes,
-                                    color = Amber.copy(alpha = 0.8f),
+                                    text = "📝 ${item.notes}",
+                                    color = Amber.copy(alpha = 0.85f),
                                     style = MaterialTheme.typography.bodySmall,
                                 )
                             }
-                        }
-                        Box(
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .background(Amber.copy(alpha = 0.15f))
-                                .padding(horizontal = 10.dp, vertical = 4.dp),
-                        ) {
-                            Text(
-                                text = "×${item.quantity}",
-                                color = Amber,
-                                fontWeight = FontWeight.Bold,
-                                style = MaterialTheme.typography.labelMedium,
-                            )
                         }
                     }
                 }
