@@ -47,6 +47,9 @@ class MenuOrderingViewModel(
     private val _activeOrderId = MutableStateFlow<String?>(null)
     val activeOrderId: StateFlow<String?> = _activeOrderId.asStateFlow()
 
+    private val _scheduledTime = MutableStateFlow<String?>(null)
+    val scheduledTime: StateFlow<String?> = _scheduledTime.asStateFlow()
+
     init {
         service.observeAppConfig().onEach { _appConfig.value = it }.launchIn(viewModelScope)
         service.observeMenuCategories().onEach { _categories.value = it }.launchIn(viewModelScope)
@@ -64,6 +67,7 @@ class MenuOrderingViewModel(
         val existingOrder = activeOrderForTable(tableLabel)
         if (existingOrder != null) {
             _activeOrderId.value = existingOrder.id
+            _scheduledTime.value = existingOrder.scheduled_time?.takeIf { it.isNotBlank() }
             _cart.value = existingOrder.items.map { item ->
                 OrderCartLine(
                     item_id = item.item_id,
@@ -75,6 +79,7 @@ class MenuOrderingViewModel(
             }
         } else {
             _activeOrderId.value = null
+            _scheduledTime.value = null
             _cart.value = emptyList()
         }
     }
@@ -83,6 +88,11 @@ class MenuOrderingViewModel(
         _selectedTable.value = null
         _cart.value = emptyList()
         _activeOrderId.value = null
+        _scheduledTime.value = null
+    }
+
+    fun setScheduledTime(time: String?) {
+        _scheduledTime.value = time
     }
 
     fun addItem(menuItem: MenuItem) {
@@ -164,6 +174,8 @@ class MenuOrderingViewModel(
                 )
             }
 
+            val scheduledTimeSnapshot = _scheduledTime.value
+
             if (existingOrderId != null) {
                 service.updateTableOrder(
                     orderId = existingOrderId,
@@ -171,10 +183,12 @@ class MenuOrderingViewModel(
                     totalPrice = cartTotal(),
                     serverId = serverId,
                     serverName = serverName,
+                    scheduledTime = scheduledTimeSnapshot,
                 ).onSuccess {
                     _cart.value = emptyList()
                     _activeOrderId.value = null
                     _selectedTable.value = null
+                    _scheduledTime.value = null
                     _errorMessage.value = null
                 }.onFailure { error ->
                     _errorMessage.value = error.message ?: "Erreur lors de la mise à jour de la commande"
@@ -186,9 +200,11 @@ class MenuOrderingViewModel(
                     serverName = serverName,
                     items = items,
                     totalPrice = cartTotal(),
+                    scheduledTime = scheduledTimeSnapshot,
                 ).onSuccess {
                     _cart.value = emptyList()
                     _selectedTable.value = null
+                    _scheduledTime.value = null
                     _errorMessage.value = null
                 }.onFailure { error ->
                     _errorMessage.value = error.message ?: "Erreur lors de l'envoi de la commande"

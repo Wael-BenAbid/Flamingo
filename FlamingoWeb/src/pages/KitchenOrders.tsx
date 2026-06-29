@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { doc, Timestamp, updateDoc, where } from 'firebase/firestore';
+import { doc, getDoc, Timestamp, updateDoc, where } from 'firebase/firestore';
 import { formatCurrency, formatDate } from '../../shared/constants';
 import { useFirestore } from '../hooks/useFirestore';
 import { useAuth } from '../context/AuthContext';
@@ -10,6 +10,21 @@ import { cn } from '@/lib/utils';
 interface MenuCategoryRole {
   id: string;
   target_role?: string | null;
+}
+
+interface Reservation {
+  id: string;
+  positionType: string;
+  positionNumber?: string | null;
+  adults: number;
+  children: number;
+  status: string;
+  date: string;
+}
+
+interface DessertConfig {
+  dishes: number;
+  persons: number;
 }
 
 interface MenuItemRole {
@@ -129,9 +144,26 @@ export default function KitchenOrders() {
   const [orders, setOrders] = useState<TableOrder[]>([]);
   const [menuCategories, setMenuCategories] = useState<MenuCategoryRole[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItemRole[]>([]);
+  const [todayReservations, setTodayReservations] = useState<Reservation[]>([]);
+  const [dessertConfig, setDessertConfig] = useState<DessertConfig | null>(null);
   const [activeTab, setActiveTab] = useState<KitchenTab>('pending');
   const [statusError, setStatusError] = useState<string | null>(null);
   const todayStart = useRef(getStartOfToday()).current;
+  const todayStr = useRef((() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  })()).current;
+
+  // Load dessert config once on mount
+  useEffect(() => {
+    getDoc(doc(db, 'settings', 'app_config')).then((snap) => {
+      const data = snap.data() as { dessert_ratio_dishes?: number; dessert_ratio_persons?: number } | undefined;
+      const dishes = data?.dessert_ratio_dishes ?? 0;
+      const persons = data?.dessert_ratio_persons ?? 0;
+      if (dishes > 0 && persons > 0) setDessertConfig({ dishes, persons });
+    }).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const unsubOrders = subscribe<TableOrder>(
@@ -141,7 +173,13 @@ export default function KitchenOrders() {
     );
     const unsubCategories = subscribe<MenuCategoryRole>('menu_categories', (data) => setMenuCategories((data || []).filter(Boolean)));
     const unsubItems = subscribe<MenuItemRole>('menu_items', (data) => setMenuItems((data || []).filter(Boolean)));
-    return () => { unsubOrders(); unsubCategories(); unsubItems(); };
+    // Subscribe to today's confirmed reservations for dessert calculation
+    const unsubReservations = subscribe<Reservation>(
+      'reservations',
+      (data) => setTodayReservations((data || []).filter((r) => r?.status === 'confirmed')),
+      [where('date', '==', todayStr)],
+    );
+    return () => { unsubOrders(); unsubCategories(); unsubItems(); unsubReservations(); };
   // subscribe is a stable module-level reference — intentionally omitted from deps
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -203,6 +241,30 @@ export default function KitchenOrders() {
     return [...totals.values()].sort((a, b) => b.quantity - a.quantity);
   }, [filteredOrders]);
 
+  // Dessert counts per table (based on confirmed reservations + dessert ratio config)
+  const dessertPerTable = useMemo(() => {
+    if (!dessertConfig || dessertConfig.persons <= 0) return [];
+    const result: Array<{ table: string; persons: number; count: number }> = [];
+    for (const order of activeOrders) {
+      const tableLabel = getTableLabel(order);
+      const reservation = todayReservations.find((res) => {
+        const resLabel = `${(res.positionType || '').trim()} ${(res.positionNumber || '').trim()}`.trim();
+        return resLabel === tableLabel;
+      });
+      if (!reservation) continue;
+      const persons = (reservation.adults || 0) + (reservation.children || 0);
+      if (persons <= 0) continue;
+      const count = Math.ceil(persons / dessertConfig.persons) * dessertConfig.dishes;
+      result.push({ table: tableLabel, persons, count });
+    }
+    return result.sort((a, b) => a.table.localeCompare(b.table, 'fr'));
+  }, [activeOrders, todayReservations, dessertConfig]);
+
+  const totalDesserts = useMemo(
+    () => dessertPerTable.reduce((sum, t) => sum + t.count, 0),
+    [dessertPerTable]
+  );
+
   const setStatus = async (orderId: string, status: string) => {
     setStatusError(null);
     try {
@@ -246,6 +308,47 @@ export default function KitchenOrders() {
                 <span className="flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-flamingo px-1.5 text-[11px] font-bold text-white">
                   {quantity}
                 </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Section Desserts ───────────────────────────────────────────── */}
+      {dessertConfig && dessertPerTable.length > 0 && (
+        <div className="rounded-sm border border-black/5 bg-white p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.35em] font-bold text-slate-500">
+                Desserts par table
+              </div>
+              <div className="text-[10px] text-slate-400 mt-0.5">
+                {dessertConfig.dishes} plat{dessertConfig.dishes > 1 ? 's' : ''} pour{' '}
+                {dessertConfig.persons} personne{dessertConfig.persons > 1 ? 's' : ''}
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-2xl font-bold text-flamingo">{totalDesserts}</div>
+              <div className="text-[10px] uppercase tracking-widest text-slate-400">
+                plat{totalDesserts > 1 ? 's' : ''} total
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {dessertPerTable.map(({ table, persons, count }) => (
+              <div
+                key={table}
+                className="flex flex-col items-center rounded-sm border border-black/5 bg-slate-50 px-3 py-2 min-w-[5rem]"
+              >
+                <div className="text-sm font-bold text-slate-900 truncate max-w-[6rem] text-center">
+                  {table}
+                </div>
+                <div className="text-[10px] text-slate-400 mt-0.5">
+                  {persons} pers.
+                </div>
+                <div className="mt-1.5 flex h-6 min-w-[2rem] items-center justify-center rounded-full bg-flamingo px-2 text-xs font-bold text-white">
+                  {count} plt
+                </div>
               </div>
             ))}
           </div>

@@ -70,7 +70,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <div className="p-6">
           <div className="mb-8 flex items-center gap-3 pb-6 border-b border-border">
             <div className="w-11 h-11 rounded-xl overflow-hidden shadow-md border border-flamingo/20 flex-shrink-0">
-              <img src="https://firebasestorage.googleapis.com/v0/b/flamingo-ea5e5.firebasestorage.app/o/flamingo.jpeg?alt=media&token=eb138c1e-a9e1-405a-9b47-de81c2588b88" alt="Flamingo" className="w-full h-full object-cover" />
+              <img src="/logo-flamingo.jpeg" alt="Flamingo" className="w-full h-full object-cover" />
             </div>
             <div>
               <h1 className="text-lg font-bold tracking-widest uppercase text-primary leading-none">

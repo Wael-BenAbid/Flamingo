@@ -422,23 +422,40 @@ export default function Reports() {
     if (report.dayReservations.length === 0) {
       chk(8); txt('Aucune réservation pour ce jour.', PAD + 2, y, 9, false, [180,180,180]); y += 8;
     } else {
+      const posMap = new Map(positions.map((p) => [normalizeKey(p.type), p]));
       report.dayReservations.forEach((r) => {
-        chk(14);
+        const posData    = posMap.get(normalizeKey(r.positionType || ''));
+        const ap         = posData?.price ?? 0;
+        const cp         = posData?.childPrice ?? Math.round(ap * 0.5);
+        const computedAmt = r.adults * ap + r.children * cp;
+        const amt        = (typeof r.totalPrice === 'number' && r.totalPrice > 0)
+          ? fmtDt(r.totalPrice)
+          : computedAmt > 0 ? fmtDt(computedAmt) : '—';
+        const hasPriceBreakdown = ap > 0;
+        const blockH     = hasPriceBreakdown ? 20 : 13;
+
+        chk(blockH + 4);
         const name   = `${r.firstName || ''} ${r.lastName || ''}`.trim() || '—';
         const pos    = `${r.positionType || ''}${r.positionNumber ? ` N°${r.positionNumber}` : ''}`;
         const status = r.status === 'confirmed' ? 'CONFIRMÉ' : r.status === 'absent' ? 'ABSENT'
                      : r.status === 'cancelled' ? 'ANNULÉ' : r.status.toUpperCase();
-        const amt    = typeof r.totalPrice === 'number' ? fmtDt(r.totalPrice) : '—';
         const stColor: [number,number,number] =
           r.status === 'confirmed' ? [16,185,129] : r.status === 'absent' ? [245,158,11] : [200,50,50];
 
         doc.setFillColor(249, 250, 251); doc.setDrawColor(230);
-        doc.rect(PAD, y - 4, W - PAD * 2, 13, 'FD');
+        doc.rect(PAD, y - 4, W - PAD * 2, blockH, 'FD');
         txt(name, PAD + 2, y, 9, true);
         txt(status, W - PAD - 2, y, 8, true, stColor, 'right');
         y += 5;
-        txt(`${pos}  ·  ${r.adults}A ${r.children}ENF${r.time ? `  ·  ${r.time}` : ''}`, PAD + 3, y, 8, false, [100,100,100]);
-        txt(amt, W - PAD - 2, y, 8, false, [50,50,50], 'right');
+        txt(`${pos}${r.time ? `  ·  ${r.time}` : ''}`, PAD + 3, y, 8, false, [100,100,100]);
+        txt(amt, W - PAD - 2, y, 8, true, [50,50,50], 'right');
+        if (hasPriceBreakdown) {
+          y += 5;
+          const breakdown = r.children > 0
+            ? `${r.adults} AD × ${fmtDt(ap)}  +  ${r.children} ENF × ${fmtDt(cp)}`
+            : `${r.adults} AD × ${fmtDt(ap)}`;
+          txt(breakdown, PAD + 3, y, 7, false, [130, 130, 130]);
+        }
         y += 9;
       });
     }
@@ -526,138 +543,254 @@ export default function Reports() {
     doc.save(`bilan-journalier-${selectedDate}.pdf`);
   };
 
-  // ── Commandes du Jour PDF ─────────────────────────────────────────────────
+  // ── Bilan par Table PDF ───────────────────────────────────────────────────
+  // Chaque table : réservation (AD × prix + ENF × prix) + commandes + total net
 
   const exportCommandesDuJour = () => {
     const doc = new jsPDF();
-    const W = doc.internal.pageSize.getWidth();
-    let y = 14;
+    const W   = doc.internal.pageSize.getWidth();
+    const PAD = 12;
+    let y      = 14;
     let pageNum = 1;
 
     const addPage = () => {
       doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(160);
-      doc.text(`Flamingo Coucou Beach — Commandes du Jour — Page ${pageNum}`, W / 2, 290, { align: 'center' });
+      doc.text(`Flamingo Coucou Beach — Bilan par Table — Page ${pageNum}`, W / 2, 290, { align: 'center' });
       doc.addPage(); y = 14; pageNum++;
       doc.setTextColor(0);
     };
-    const chk = (h = 10) => { if (y + h > 278) addPage(); };
-    const line = (text: string, size = 10, bold = false, color?: [number, number, number]) => {
-      chk(size * 0.6 + 3);
+    const chk  = (h = 10) => { if (y + h > 278) addPage(); };
+    const txt  = (text: string, x: number, yy: number, size = 9, bold = false,
+                  color: [number,number,number] = [0,0,0], align: 'left'|'center'|'right' = 'left') => {
       doc.setFontSize(size); doc.setFont('helvetica', bold ? 'bold' : 'normal');
-      if (color) doc.setTextColor(...color); else doc.setTextColor(0);
-      doc.text(text, 14, y);
-      y += size * 0.6 + 3;
+      doc.setTextColor(...color); doc.text(text, x, yy, { align }); doc.setTextColor(0);
     };
-    const lineR = (left: string, right: string, size = 10, bold = false) => {
-      chk(size * 0.6 + 3);
-      doc.setFontSize(size); doc.setFont('helvetica', bold ? 'bold' : 'normal'); doc.setTextColor(0);
-      doc.text(left, 14, y);
-      doc.text(right, W - 14, y, { align: 'right' });
-      y += size * 0.6 + 3;
+    const lineR = (left: string, right: string, size = 9, bold = false,
+                   lColor: [number,number,number] = [80,80,80], rColor: [number,number,number] = [0,0,0]) => {
+      chk(size * 0.6 + 4);
+      doc.setFontSize(size); doc.setFont('helvetica', bold ? 'bold' : 'normal');
+      doc.setTextColor(...lColor); doc.text(left,  PAD + 2, y);
+      doc.setTextColor(...rColor); doc.text(right, W - PAD - 2, y, { align: 'right' });
+      doc.setTextColor(0);
+      y += size * 0.6 + 4;
     };
-    const sep = (light = false) => {
-      chk(6); y += 2;
-      doc.setDrawColor(light ? 220 : 150);
-      doc.line(14, y, W - 14, y); y += 5;
-    };
-    const thickSep = () => {
-      chk(8); y += 3;
-      doc.setDrawColor(40); doc.setLineWidth(0.8);
-      doc.line(14, y, W - 14, y); doc.setLineWidth(0.2);
-      y += 6;
-    };
+    const sep  = (color = 200) => { chk(5); y += 2; doc.setDrawColor(color); doc.line(PAD, y, W - PAD, y); y += 4; };
 
-    // ── En-tête du document ────────────────────────────────────────────────
+    // Lookups
+    const posMap = new Map(positions.map((p) => [normalizeKey(p.type), p]));
+    const resByTable = new Map<string, Reservation>();
+    report.dayReservations.forEach((r) => {
+      if (r.positionType?.trim() && r.positionNumber?.trim()) {
+        resByTable.set(`${r.positionType.trim()} ${r.positionNumber.trim()}`, r);
+      }
+    });
+
+    // ── En-tête ────────────────────────────────────────────────────────────
     doc.setFillColor(26, 54, 93);
     doc.rect(0, 0, W, 22, 'F');
-    doc.setFontSize(15); doc.setFont('helvetica', 'bold'); doc.setTextColor(255, 255, 255);
-    doc.text('FLAMINGO COUCOU BEACH', 14, 14);
-    doc.setFontSize(9); doc.setFont('helvetica', 'normal');
-    doc.text('COMMANDES DU JOUR', W - 14, 14, { align: 'right' });
-    doc.setTextColor(0);
+    txt('FLAMINGO COUCOU BEACH', 14, 14, 14, true, [255,255,255]);
+    txt('BILAN PAR TABLE', W - 14, 14, 9, false, [255,255,255], 'right');
     y = 30;
+    txt(format(date, 'EEEE dd MMMM yyyy', { locale: fr }), PAD, y, 12, true);
+    y += 7;
+    txt(`Généré le ${format(new Date(), 'dd/MM/yyyy à HH:mm', { locale: fr })}`, PAD, y, 8, false, [130,130,130]);
+    y += 10;
 
-    line(`Date : ${format(date, 'EEEE dd MMMM yyyy', { locale: fr })}`, 12, true);
-    line(`Généré le ${format(new Date(), 'dd/MM/yyyy à HH:mm', { locale: fr })}  —  ${report.dayTableOrders.length} table${report.dayTableOrders.length !== 1 ? 's' : ''} commandées`, 9, false, [120, 120, 120]);
-    thickSep();
+    // ── Récapitulatif global ───────────────────────────────────────────────
+    // On inclut les réservations confirmées sans commande aussi
+    const allTables = new Set<string>();
+    report.dayTableOrders.forEach((o) => { if (o.table_number) allTables.add(o.table_number); });
+    report.dayReservations.filter((r) => r.status === 'confirmed' && r.positionType && r.positionNumber)
+      .forEach((r) => allTables.add(`${r.positionType.trim()} ${r.positionNumber.trim()}`));
 
-    // ── Récapitulatif rapide ───────────────────────────────────────────────
-    const grandTotal = report.dayTableOrders.reduce((s, o) => s + (o.grandTotal ?? o.total_price ?? 0), 0);
-    line('RÉCAPITULATIF', 11, true, [26, 54, 93]);
-    y += 1;
-    lineR('Total tables servies :', report.dayTableOrders.length.toString(), 10);
-    lineR('Total général (DT) :', fmtDt(grandTotal), 11, true);
-    thickSep();
+    let globalRes   = 0;
+    let globalOrders = 0;
+    allTables.forEach((label) => {
+      const res = resByTable.get(label);
+      const pos = res ? posMap.get(normalizeKey(res.positionType || '')) : null;
+      const ap  = pos?.price ?? 0;
+      const cp  = pos?.childPrice ?? Math.round(ap * 0.5);
+      globalRes += (res?.adults ?? 0) * ap + (res?.children ?? 0) * cp;
+      const ord = report.dayTableOrders.find((o) => o.table_number === label);
+      globalOrders += (ord?.items || []).reduce((s, i) => s + i.unit_price * i.quantity, 0);
+    });
+
+    chk(28);
+    const kpiW = (W - PAD * 2) / 3;
+    [
+      { label: 'TABLES', value: allTables.size.toString(), color: [26,54,93] as [number,number,number] },
+      { label: 'ENTRÉES', value: fmtDt(globalRes), color: [255,122,133] as [number,number,number] },
+      { label: 'CONSOMMATION', value: fmtDt(globalOrders), color: [16,185,129] as [number,number,number] },
+    ].forEach((k, i) => {
+      const x = PAD + i * kpiW;
+      doc.setFillColor(248,248,252); doc.setDrawColor(210);
+      doc.rect(x, y, kpiW, 20, 'FD');
+      txt(k.value, x + kpiW / 2, y + 11, 11, true, k.color, 'center');
+      txt(k.label,  x + kpiW / 2, y + 18, 7,  false, [120,120,120], 'center');
+    });
+    y += 26;
 
     // ── Détail par table ───────────────────────────────────────────────────
-    if (report.dayTableOrders.length === 0) {
-      line('Aucune commande enregistrée pour ce jour.', 11, false, [150, 150, 150]);
-    } else {
-      report.dayTableOrders.forEach((order, idx) => {
-        const facture  = order.grandTotal ?? order.total_price ?? 0;
-        const client   = order.clientName?.trim() || '—';
-        const server   = order.server_name?.trim() || '—';
-        const discount = order.discountPercent ?? 0;
-        const items    = order.items || [];
-        const orderTot = items.reduce((s, i) => s + i.unit_price * i.quantity, 0);
+    const sortedTables = [...allTables].sort();
 
-        // ── Bandeau table ────────────────────────────────────────────────
-        chk(30);
-        doc.setFillColor(240, 244, 248);
-        doc.rect(12, y - 3, W - 24, 14, 'F');
-        doc.setFontSize(12); doc.setFont('helvetica', 'bold'); doc.setTextColor(26, 54, 93);
-        doc.text(`TABLE ${order.table_number}`, 16, y + 5);
-        doc.setFontSize(10); doc.setFont('helvetica', 'bold'); doc.setTextColor(255, 122, 133);
-        doc.text(fmtDt(facture), W - 16, y + 5, { align: 'right' });
-        doc.setTextColor(0);
+    if (sortedTables.length === 0) {
+      txt('Aucune table pour ce jour.', PAD, y, 10, false, [150,150,150]);
+    } else {
+      sortedTables.forEach((tableLabel, idx) => {
+        const res      = resByTable.get(tableLabel);
+        const order    = report.dayTableOrders.find((o) => o.table_number === tableLabel);
+        const items    = order?.items || [];
+        const discount = order?.discountPercent ?? 0;
+        const client   = res
+          ? `${res.firstName || ''} ${res.lastName || ''}`.trim() || '—'
+          : order?.clientName?.trim() || '—';
+        const server   = order?.server_name?.trim() || '';
+
+        // Prix réservation
+        const pos        = res ? posMap.get(normalizeKey(res.positionType || '')) : null;
+        const ap         = pos?.price ?? 0;
+        const cp         = pos?.childPrice ?? Math.round(ap * 0.5);
+        const nbAd       = res?.adults ?? 0;
+        const nbEnf      = res?.children ?? 0;
+        const resTotal   = nbAd * ap + nbEnf * cp;
+
+        // Prix commande
+        const orderTotal = items.reduce((s, i) => s + i.unit_price * i.quantity, 0);
+
+        // Total combiné
+        const subtotal      = resTotal + orderTotal;
+        const discountAmt   = Math.round(subtotal * discount) / 100;
+        const netTotal      = subtotal - discountAmt;
+
+        // ── Bandeau table ─────────────────────────────────────────────────
+        chk(20);
+        doc.setFillColor(26, 54, 93);
+        doc.rect(PAD, y - 2, W - PAD * 2, 13, 'F');
+        txt(`TABLE  ${tableLabel.toUpperCase()}`, PAD + 4, y + 7, 12, true, [255,255,255]);
+        txt(fmtDt(netTotal), W - PAD - 4, y + 7, 12, true, [255,122,133], 'right');
         y += 16;
 
         // Infos
-        line(`Serveur : ${server}`, 9, true, [26, 54, 93]);
-        if (client !== '—') line(`Client  : ${client}`, 9);
-        if (order.source === 'walkin') line('Source  : Walk-in', 9, false, [150, 100, 0]);
-        sep(true);
+        if (client !== '—') {
+          chk(6);
+          txt(`Client : ${client}`, PAD + 2, y, 8, false, [60,60,60]);
+          y += 6;
+        }
+        if (server) {
+          chk(6);
+          txt(`Serveur : ${server}`, PAD + 2, y, 8, false, [26,54,93]);
+          y += 6;
+        }
+        if (order?.source === 'walkin') {
+          chk(6);
+          txt('Walk-in (sans réservation)', PAD + 2, y, 8, false, [150,100,0]);
+          y += 6;
+        }
+        y += 2;
 
-        // Articles
+        // ── Section RÉSERVATION ───────────────────────────────────────────
+        if (res && (nbAd > 0 || nbEnf > 0)) {
+          chk(8);
+          doc.setFillColor(240, 244, 250); doc.setDrawColor(200);
+          doc.rect(PAD, y - 3, W - PAD * 2, 7, 'FD');
+          txt('RÉSERVATION', PAD + 3, y + 2, 8, true, [26,54,93]);
+          y += 8;
+
+          if (nbAd > 0 && ap > 0) {
+            lineR(
+              `${nbAd} Adulte${nbAd > 1 ? 's' : ''} × ${fmtDt(ap)}`,
+              fmtDt(nbAd * ap),
+              9, false, [50,50,50], [50,50,50]
+            );
+          }
+          if (nbEnf > 0 && cp > 0) {
+            lineR(
+              `${nbEnf} Enfant${nbEnf > 1 ? 's' : ''} × ${fmtDt(cp)}`,
+              fmtDt(nbEnf * cp),
+              9, false, [50,50,50], [150,100,0]
+            );
+          }
+          if (resTotal > 0) {
+            chk(6);
+            doc.setFillColor(240,248,240); doc.setDrawColor(180);
+            doc.rect(PAD, y - 3, W - PAD * 2, 7, 'FD');
+            txt('Sous-total entrée', PAD + 3, y + 2, 8, true, [16,130,90]);
+            txt(fmtDt(resTotal), W - PAD - 3, y + 2, 8, true, [16,130,90], 'right');
+            y += 9;
+          }
+        }
+
+        // ── Section COMMANDE ─────────────────────────────────────────────
+        chk(8);
+        doc.setFillColor(250, 245, 240); doc.setDrawColor(200);
+        doc.rect(PAD, y - 3, W - PAD * 2, 7, 'FD');
+        txt('CONSOMMATION', PAD + 3, y + 2, 8, true, [180,80,20]);
+        y += 8;
+
         if (items.length === 0) {
-          line('(aucun article enregistré)', 9, false, [180, 180, 180]);
+          chk(6);
+          txt('(aucune commande)', PAD + 3, y, 8, false, [180,180,180]);
+          y += 7;
         } else {
-          doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(100, 100, 100);
-          doc.text('Article', 14, y);
-          doc.text('Qté', W / 2, y, { align: 'center' });
-          doc.text('P.U.', W - 50, y);
-          doc.text('Total', W - 14, y, { align: 'right' });
-          doc.setTextColor(0);
-          y += 5;
-          doc.setDrawColor(200); doc.line(14, y, W - 14, y); y += 3;
+          // En-tête colonnes
+          chk(7);
+          doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(120,120,120);
+          doc.text('Article',   PAD + 3, y);
+          doc.text('Qté',       W / 2, y, { align: 'center' });
+          doc.text('P.U.',      W - 50, y);
+          doc.text('Total',     W - PAD - 3, y, { align: 'right' });
+          doc.setTextColor(0); y += 4;
+          doc.setDrawColor(210); doc.line(PAD, y, W - PAD, y); y += 4;
 
           items.forEach((item) => {
             chk(7);
-            doc.setFontSize(9); doc.setFont('helvetica', 'normal');
-            doc.text(item.name.slice(0, 38), 14, y);
-            doc.text(`×${item.quantity}`, W / 2, y, { align: 'center' });
+            doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(30,30,30);
+            doc.text(item.name.slice(0, 36), PAD + 3, y);
+            doc.text(`×${item.quantity}`,    W / 2, y, { align: 'center' });
             doc.text(fmtDt(item.unit_price), W - 50, y);
-            doc.text(fmtDt(item.unit_price * item.quantity), W - 14, y, { align: 'right' });
+            doc.text(fmtDt(item.unit_price * item.quantity), W - PAD - 3, y, { align: 'right' });
+            doc.setTextColor(0);
             y += 6;
           });
-
-          sep(true);
-          if (discount > 0) {
-            lineR(`Sous-total :`, fmtDt(orderTot), 9);
-            lineR(`Remise ${discount}% :`, `− ${fmtDt(orderTot * discount / 100)}`, 9, false);
-          }
-          lineR('TOTAL NET :', fmtDt(facture), 11, true);
+          // Sous-total commande
+          chk(6);
+          sep(210);
+          txt('Sous-total commande', PAD + 3, y, 8, true, [180,80,20]);
+          txt(fmtDt(orderTotal),    W - PAD - 3, y, 8, true, [180,80,20], 'right');
+          y += 7;
         }
 
-        if (idx < report.dayTableOrders.length - 1) thickSep();
+        // ── Remise & Total net ────────────────────────────────────────────
+        if (discount > 0) {
+          chk(14);
+          sep(200);
+          lineR('Sous-total :', fmtDt(subtotal), 9, false, [80,80,80], [80,80,80]);
+          lineR(`Remise ${discount}% :`, `− ${fmtDt(discountAmt)}`, 9, false, [180,50,50], [180,50,50]);
+        } else {
+          sep(210);
+        }
+        // Ligne TOTAL NET
+        chk(12);
+        doc.setFillColor(26,54,93);
+        doc.rect(PAD, y - 3, W - PAD * 2, 11, 'F');
+        txt('TOTAL NET', PAD + 4, y + 5, 10, true, [255,255,255]);
+        txt(fmtDt(netTotal), W - PAD - 4, y + 5, 11, true, [255,122,133], 'right');
+        y += 16;
+
+        if (idx < sortedTables.length - 1) {
+          chk(10); y += 4;
+          doc.setDrawColor(100); doc.setLineWidth(0.5);
+          doc.line(PAD, y, W - PAD, y); doc.setLineWidth(0.2);
+          y += 8;
+        }
       });
     }
 
     // Pied de page
     doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(160);
-    doc.text(`Flamingo Coucou Beach — Commandes du Jour — Page ${pageNum}`, W / 2, 290, { align: 'center' });
+    doc.text(`Flamingo Coucou Beach — Bilan par Table — Page ${pageNum}`, W / 2, 290, { align: 'center' });
 
-    doc.save(`commandes-du-jour-${selectedDate}.pdf`);
+    doc.save(`bilan-par-table-${selectedDate}.pdf`);
   };
 
   // ── Stock PDF (inchangé mais amélioré en-tête) ────────────────────────────
@@ -745,6 +878,13 @@ export default function Reports() {
 
   const exportExcel = () => {
     const wb = XLSX.utils.book_new();
+    const resolveResPrice = (r: Reservation): number => {
+      if (typeof r.totalPrice === 'number' && r.totalPrice > 0) return r.totalPrice;
+      const pos = positions.find((p) => normalizeKey(p.type) === normalizeKey(r.positionType || ''));
+      const ap = pos?.price ?? 0;
+      const cp = pos?.childPrice ?? Math.round(ap * 0.5);
+      return r.adults * ap + r.children * cp;
+    };
 
     // Feuille 1 : Résumé
     const summaryRows: (string | number)[][] = [
@@ -792,7 +932,7 @@ export default function Reports() {
       r.children || 0,
       (r.adults || 0) + (r.children || 0),
       r.status || '',
-      r.totalPrice ?? 0,
+      resolveResPrice(r),
     ]);
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([resHeaders, ...resRows]), 'Réservations');
 
@@ -884,7 +1024,7 @@ export default function Reports() {
             <Download className="w-3.5 h-3.5" /> Bilan PDF
           </Button>
           <Button onClick={exportCommandesDuJour} className="h-9 px-4 bg-navy hover:bg-navy/90 text-white rounded-lg uppercase text-[11px] font-bold tracking-widest gap-2">
-            <ClipboardList className="w-3.5 h-3.5" /> Commandes Jour
+            <ClipboardList className="w-3.5 h-3.5" /> Bilan Tables
           </Button>
           <Button onClick={exportStockPdf} className="h-9 px-4 bg-slate-600 hover:bg-slate-700 text-white rounded-lg uppercase text-[11px] font-bold tracking-widest gap-2">
             <Package className="w-3.5 h-3.5" /> Stock PDF
@@ -979,7 +1119,14 @@ export default function Reports() {
                         </span>
                       </td>
                       <td className="px-3 py-2 text-xs font-medium">
-                        {typeof r.totalPrice === 'number' ? fmtDt(r.totalPrice) : '—'}
+                        {(() => {
+                          if (typeof r.totalPrice === 'number' && r.totalPrice > 0) return fmtDt(r.totalPrice);
+                          const pos = positions.find((p) => normalizeKey(p.type) === normalizeKey(r.positionType || ''));
+                          const ap = pos?.price ?? 0;
+                          const cp = pos?.childPrice ?? Math.round(ap * 0.5);
+                          const amt = r.adults * ap + r.children * cp;
+                          return amt > 0 ? fmtDt(amt) : '—';
+                        })()}
                       </td>
                     </tr>
                   );

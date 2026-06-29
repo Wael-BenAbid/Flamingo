@@ -31,9 +31,10 @@ import {
   ChevronDown,
   Pencil,
   Trash2,
+  Banknote,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { Reservation } from '@/hooks/useReservations';
+import type { Reservation, ReservationPosition } from '@/hooks/useReservations';
 import {
   Select,
   SelectContent,
@@ -95,6 +96,7 @@ function useTilt(ref: React.RefObject<HTMLDivElement | null>) {
 interface GlassReservationCardProps {
   res:          Reservation;
   date:         string;
+  positions?:   ReservationPosition[];
   onStatusChange: (id: string, status: Reservation['status']) => void;
   onEdit:       (res: Reservation) => void;
   onDelete:     (id: string) => void;
@@ -105,11 +107,19 @@ interface GlassReservationCardProps {
 export function GlassReservationCard({
   res,
   date,
+  positions = [],
   onStatusChange,
   onEdit,
   onDelete,
   isPast = false,
 }: GlassReservationCardProps) {
+  const computedPrice = (() => {
+    if (typeof res.totalPrice === 'number' && res.totalPrice > 0) return res.totalPrice;
+    const pos = positions.find((p) => p.type.trim().toLowerCase() === (res.positionType || '').trim().toLowerCase());
+    const ap = pos?.price ?? 0;
+    const cp = pos?.childPrice ?? Math.round(ap * 0.5);
+    return ap > 0 ? res.adults * ap + res.children * cp : null;
+  })();
   const ref      = useRef<HTMLDivElement>(null);
   const { rotateX, rotateY, lightX, lightY, onMouseMove, onMouseLeave } = useTilt(ref);
   const [expanded, setExpanded] = useState(false);
@@ -180,6 +190,26 @@ export function GlassReservationCard({
                 {res.time}
               </span>
             </div>
+            <div
+              className="flex items-center gap-2 mt-2 text-[10px] font-bold uppercase tracking-wide flex-wrap"
+            >
+              <span
+                className="flex items-center gap-1 px-2 py-0.5 rounded-full"
+                style={{ background: 'rgba(46,196,182,0.12)', color: T.teal }}
+              >
+                <Users className="w-2.5 h-2.5" />
+                {res.adults} AD · {res.children} ENF
+              </span>
+              {res.positionType && (
+                <span
+                  className="flex items-center gap-1 px-2 py-0.5 rounded-full"
+                  style={{ background: 'rgba(245,155,53,0.12)', color: T.amber }}
+                >
+                  <MapPin className="w-2.5 h-2.5" />
+                  {res.positionType}{res.positionNumber ? ` N°${res.positionNumber}` : ''}
+                </span>
+              )}
+            </div>
           </div>
 
           <div className="flex items-center gap-2.5 shrink-0">
@@ -246,8 +276,15 @@ export function GlassReservationCard({
                   <DetailRow
                     icon={<Clock className="w-3 h-3" />}
                     label="Date"
-                    value={format(new Date(date), 'dd MMMM yyyy', { locale: fr })}
+                    value={format(new Date(`${date}T00:00:00`), 'dd MMMM yyyy', { locale: fr })}
                   />
+                  {computedPrice != null && computedPrice > 0 && (
+                    <DetailRow
+                      icon={<Banknote className="w-3 h-3" />}
+                      label="Montant"
+                      value={`${computedPrice.toFixed(2)} DT`}
+                    />
+                  )}
                 </div>
 
                 {/* Notes */}

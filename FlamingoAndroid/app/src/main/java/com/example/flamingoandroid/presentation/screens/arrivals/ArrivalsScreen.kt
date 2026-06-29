@@ -271,8 +271,8 @@ fun ArrivalsScreen(viewModel: ArrivalsViewModel) {
             reservation     = res,
             positions       = positions,
             occupiedPerType = occupiedPerType,
-            onConfirm       = { posType, posNum ->
-                viewModel.confirmArrival(res.id, posType, posNum)
+            onConfirm       = { posType, posNum, adults, children ->
+                viewModel.confirmArrival(res.id, posType, posNum, adults, children)
                 confirmingReservation = null
             },
             onDismiss = { confirmingReservation = null },
@@ -548,7 +548,7 @@ private fun ConfirmArrivalDialog(
     reservation: Reservation,
     positions: List<Position>,
     occupiedPerType: Map<String, Set<String>>,
-    onConfirm: (posType: String, posNum: String) -> Unit,
+    onConfirm: (posType: String, posNum: String, adults: Int, children: Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val name = "${reservation.firstName} ${reservation.lastName}".trim().ifBlank { "Client" }
@@ -565,6 +565,8 @@ private fun ConfirmArrivalDialog(
 
     var selectedPosition by remember { mutableStateOf(initialPos) }
     var selectedNumber   by remember { mutableStateOf(firstFreeNumber(initialPos)) }
+    var adults           by remember { mutableStateOf(reservation.adults.coerceAtLeast(1)) }
+    var children         by remember { mutableStateOf(reservation.children.coerceAtLeast(0)) }
 
     var typeDropdownExpanded by remember { mutableStateOf(false) }
 
@@ -607,6 +609,101 @@ private fun ConfirmArrivalDialog(
                     style = MaterialTheme.typography.bodyMedium,
                     color = Mist,
                 )
+
+                Divider(color = Outline)
+
+                // Adultes & Enfants
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "ADULTES & ENFANTS",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Mist,
+                        letterSpacing = 1.5.sp,
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        // Adultes counter
+                        Row(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Raised)
+                                .border(1.dp, Outline, RoundedCornerShape(10.dp))
+                                .padding(horizontal = 8.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            IconButton(
+                                onClick = { if (adults > 1) adults-- },
+                                modifier = Modifier.size(32.dp),
+                            ) {
+                                Text("−", color = if (adults > 1) Amber else Mist,
+                                    fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                            }
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = "$adults",
+                                    color = Teal,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 18.sp,
+                                )
+                                Text(
+                                    text = "Adultes",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Mist,
+                                    fontSize = 9.sp,
+                                )
+                            }
+                            IconButton(
+                                onClick = { adults++ },
+                                modifier = Modifier.size(32.dp),
+                            ) {
+                                Text("+", color = Amber, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                            }
+                        }
+                        // Enfants counter
+                        Row(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Raised)
+                                .border(1.dp, Outline, RoundedCornerShape(10.dp))
+                                .padding(horizontal = 8.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            IconButton(
+                                onClick = { if (children > 0) children-- },
+                                modifier = Modifier.size(32.dp),
+                            ) {
+                                Text("−", color = if (children > 0) Amber else Mist,
+                                    fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                            }
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = "$children",
+                                    color = Amber,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 18.sp,
+                                )
+                                Text(
+                                    text = "Enfants",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Mist,
+                                    fontSize = 9.sp,
+                                )
+                            }
+                            IconButton(
+                                onClick = { children++ },
+                                modifier = Modifier.size(32.dp),
+                            ) {
+                                Text("+", color = Amber, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                            }
+                        }
+                    }
+                }
 
                 Divider(color = Outline)
 
@@ -790,7 +887,7 @@ private fun ConfirmArrivalDialog(
                         onClick = {
                             val posType = selectedPosition?.type.orEmpty()
                             if (posType.isNotBlank()) {
-                                onConfirm(posType, selectedNumber)
+                                onConfirm(posType, selectedNumber, adults, children)
                             }
                         },
                         modifier = Modifier.weight(1f),

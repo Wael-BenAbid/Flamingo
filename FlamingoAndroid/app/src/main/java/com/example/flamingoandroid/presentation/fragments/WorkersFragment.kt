@@ -312,23 +312,22 @@ class WorkersFragment : Fragment() {
         val currentIndex = values.indexOf(worker.currentPresence).coerceAtLeast(0)
         var selectedIndex = currentIndex
 
-        MaterialAlertDialogBuilder(requireContext())
+        val presenceDialog = MaterialAlertDialogBuilder(requireContext())
             .setTitle("Choisir l'état du jour — ${worker.fullName}")
             .setSingleChoiceItems(labels, currentIndex) { _, which ->
                 selectedIndex = which
             }
             .setPositiveButton("Valider") { _, _ ->
-                viewLifecycleOwner.lifecycleScope.launch {
-                    val isAdmin = firebaseService.hasAdminAccess(firebaseService.getCurrentUser())
-                    if (isAdmin) {
-                        updateWorkerPresence(worker, today, values[selectedIndex])
-                    } else {
-                        Snackbar.make(binding.root, "Action réservée aux administrateurs", Snackbar.LENGTH_SHORT).show()
-                    }
+                if (canManageWorkers()) {
+                    updateWorkerPresence(worker, today, values[selectedIndex])
+                } else {
+                    Snackbar.make(binding.root, "Action réservée aux administrateurs et responsables", Snackbar.LENGTH_SHORT).show()
                 }
             }
             .setNegativeButton("Annuler", null)
-            .show()
+            .create()
+        presenceDialog.setCanceledOnTouchOutside(false)
+        presenceDialog.show()
     }
 
     private fun showWorkerDetailsDialog(worker: Worker) {
@@ -686,7 +685,7 @@ class WorkersFragment : Fragment() {
         val scrollView = ScrollView(context).apply { addView(inner) }
 
         // ── Dialog ───────────────────────────────────────────────────────────
-        MaterialAlertDialogBuilder(context)
+        val addWorkerDialog = MaterialAlertDialogBuilder(context)
             .setTitle("Nouveau travailleur")
             .setView(scrollView)
             .setPositiveButton("Enregistrer") { _, _ ->
@@ -737,7 +736,29 @@ class WorkersFragment : Fragment() {
                 }
             }
             .setNegativeButton("Annuler", null)
-            .show()
+            .create()
+        addWorkerDialog.setCanceledOnTouchOutside(false)
+        addWorkerDialog.setOnKeyListener { _, keyCode, event ->
+            if (keyCode == android.view.KeyEvent.KEYCODE_BACK && event.action == android.view.KeyEvent.ACTION_UP) {
+                val hasData = etName.text?.isNotBlank() == true ||
+                        etEmail.text?.isNotBlank() == true ||
+                        etPassword.text?.isNotBlank() == true
+                if (hasData) {
+                    MaterialAlertDialogBuilder(context)
+                        .setTitle("Quitter sans sauvegarder ?")
+                        .setMessage("Les informations saisies seront perdues.")
+                        .setPositiveButton("Quitter") { _, _ -> addWorkerDialog.dismiss() }
+                        .setNegativeButton("Continuer", null)
+                        .show()
+                } else {
+                    addWorkerDialog.dismiss()
+                }
+                true
+            } else {
+                false
+            }
+        }
+        addWorkerDialog.show()
     }
 
     // ── Dialog : Avance / Pénalité / Paiement ────────────────────────────────
@@ -765,7 +786,7 @@ class WorkersFragment : Fragment() {
             addView(tilReason)
         }
 
-        MaterialAlertDialogBuilder(context)
+        val moneyDialog = MaterialAlertDialogBuilder(context)
             .setTitle(title)
             .setView(inner)
             .setPositiveButton("Valider") { _, _ ->
@@ -778,7 +799,27 @@ class WorkersFragment : Fragment() {
                 onSubmit(amount, secondValue)
             }
             .setNegativeButton("Annuler", null)
-            .show()
+            .create()
+        moneyDialog.setCanceledOnTouchOutside(false)
+        moneyDialog.setOnKeyListener { _, keyCode, event ->
+            if (keyCode == android.view.KeyEvent.KEYCODE_BACK && event.action == android.view.KeyEvent.ACTION_UP) {
+                val hasData = etAmount.text?.isNotBlank() == true || etReason.text?.isNotBlank() == true
+                if (hasData) {
+                    MaterialAlertDialogBuilder(context)
+                        .setTitle("Quitter sans sauvegarder ?")
+                        .setMessage("Les informations saisies seront perdues.")
+                        .setPositiveButton("Quitter") { _, _ -> moneyDialog.dismiss() }
+                        .setNegativeButton("Continuer", null)
+                        .show()
+                } else {
+                    moneyDialog.dismiss()
+                }
+                true
+            } else {
+                false
+            }
+        }
+        moneyDialog.show()
     }
 
     override fun onDestroyView() {

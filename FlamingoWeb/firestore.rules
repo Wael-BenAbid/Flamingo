@@ -189,11 +189,8 @@ service cloud.firestore {
       allow list: if isSignedIn() && (isAdmin() || isEmployee());
       allow create: if (isAdmin() || isEmployee()) && isValidReservation(incoming());
       allow update: if (isAdmin() || isEmployee()) && (
-        // Admin : mise à jour complète (avec ou sans validation stricte)
-        isAdmin() ||
-        (isResponsable() && incoming().diff(existing()).affectedKeys().hasOnly(
-          ['status', 'positionType', 'positionNumber', 'checkIn', 'notes', 'updatedAt', 'grandTotal', 'paidAt']
-        )) ||
+        // Admin ou Responsable : mise à jour complète
+        isAdmin() || isResponsable() ||
         (isEmployee() && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'notes', 'updatedAt'])) ||
         // Paiement : mise à jour financière uniquement
         incoming().diff(existing()).affectedKeys().hasOnly(['paidAt', 'grandTotal']) ||
@@ -336,8 +333,9 @@ service cloud.firestore {
         isResponsable() ||
         // Changement de statut seul (cuisine/bar)
         incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updated_at']) ||
-        // Modification des articles
+        // Modification des articles (avec ou sans mise à jour du serveur)
         incoming().diff(existing()).affectedKeys().hasOnly(['items', 'total_price', 'updated_at']) ||
+        incoming().diff(existing()).affectedKeys().hasOnly(['items', 'total_price', 'updated_at', 'server_id', 'server_name']) ||
         // Paiement : status + champs financiers (Android & Web payment flow)
         incoming().diff(existing()).affectedKeys().hasOnly(
           ['status', 'paidAt', 'grandTotal', 'discountPercent', 'discountAmount', 'remarque']

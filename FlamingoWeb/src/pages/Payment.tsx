@@ -55,7 +55,7 @@ interface TableOrder {
 const norm = (v: unknown) => Math.max(0, Number(v) || 0);
 const dt = (n: number) => `${n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DT`;
 
-const DISCOUNT_OPTIONS = [5, 10, 20, 25] as const;
+const DISCOUNT_OPTIONS = [5, 10, 15, 20] as const;
 
 // ─── Receipt HTML generator ───────────────────────────────────────────────────
 
@@ -740,10 +740,20 @@ function InvoiceDialog({
   positionPrices: { price: number; childPrice: number } | null;
   onClose: () => void;
 }) {
+  // Compute initial order total before hooks (used to initialise customOrderTotal)
+  const orderItems: OrderItem[] = order?.items || [];
+  const computedOrderTotal = orderItems.reduce(
+    (sum, item) => sum + norm(item.unit_price) * norm(item.quantity),
+    0,
+  );
+
   const [isPaying, setIsPaying] = useState(false);
   const [paid, setPaid] = useState(!!reservation?.paidAt || order?.status === 'paid');
   const [remarque, setRemarque] = useState('');
   const [discountPercent, setDiscountPercent] = useState(0);
+  const [customAdultPrice, setCustomAdultPrice] = useState(positionPrices?.price ?? 0);
+  const [customChildPrice, setCustomChildPrice] = useState(positionPrices?.childPrice ?? 0);
+  const [customOrderTotal, setCustomOrderTotal] = useState(computedOrderTotal);
 
   const isWalkIn = !reservation && order?.source === 'walkin';
 
@@ -754,19 +764,10 @@ function InvoiceDialog({
   const adults   = reservation ? norm(reservation.adults)   : isWalkIn ? norm(order?.adults)   : 0;
   const children = reservation ? norm(reservation.children) : isWalkIn ? norm(order?.children) : 0;
 
-  const adultUnitPrice = positionPrices?.price     ?? 0;
-  const childUnitPrice = positionPrices?.childPrice ?? 0;
-
-  const reservationTotal =
-    positionPrices != null
-      ? adultUnitPrice * adults + childUnitPrice * children
-      : norm(reservation?.totalPrice ?? reservation?.total_price);
-
-  const orderItems: OrderItem[] = order?.items || [];
-  const orderTotal = orderItems.reduce(
-    (sum, item) => sum + norm(item.unit_price) * norm(item.quantity),
-    0,
-  );
+  const adultUnitPrice   = customAdultPrice;
+  const childUnitPrice   = customChildPrice;
+  const reservationTotal = adultUnitPrice * adults + childUnitPrice * children;
+  const orderTotal       = customOrderTotal;
 
   const subtotal       = reservationTotal + orderTotal;
   const discountAmount = Math.round(subtotal * discountPercent) / 100;
@@ -823,12 +824,15 @@ function InvoiceDialog({
       // Mark order paid
       if (order?.id) {
         await updateDoc(doc(db, 'table_orders', order.id), {
-          status:          'paid',
-          paidAt:          now,
-          grandTotal:      finalTotal,
+          status:             'paid',
+          paidAt:             now,
+          grandTotal:         finalTotal,
           discountPercent,
           discountAmount,
-          remarque:        remarque.trim(),
+          remarque:           remarque.trim(),
+          customAdultPrice,
+          customChildPrice,
+          adjustedOrderTotal: customOrderTotal,
         });
       }
 
@@ -903,29 +907,43 @@ function InvoiceDialog({
                   </div>
                 )}
                 {adults > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-500">
-                      {adults} Adulte{adults > 1 ? 's' : ''}
-                      {adultUnitPrice > 0 && (
-                        <span className="text-flamingo ml-1 text-[10px]">
-                          × {adultUnitPrice.toLocaleString('fr-FR')} DT
-                        </span>
-                      )}
+                  <div className="flex items-center justify-between gap-2 text-sm">
+                    <span className="text-slate-500 shrink-0">
+                      {adults} Adulte{adults > 1 ? 's' : ''} ×
                     </span>
-                    <span className="font-mono font-medium">{(adultUnitPrice * adults).toLocaleString('fr-FR')} DT</span>
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number" min={0} step="0.5"
+                        value={customAdultPrice}
+                        onChange={(e) => setCustomAdultPrice(Math.max(0, Number(e.target.value) || 0))}
+                        disabled={paid}
+                        className="w-20 border-b border-flamingo/40 bg-transparent text-center font-mono text-sm outline-none focus:border-flamingo disabled:opacity-50"
+                      />
+                      <span className="text-[10px] text-slate-400">DT</span>
+                    </div>
+                    <span className="font-mono font-semibold text-flamingo shrink-0">
+                      {dt(adultUnitPrice * adults)}
+                    </span>
                   </div>
                 )}
                 {children > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-500">
-                      {children} Enfant{children > 1 ? 's' : ''}
-                      {childUnitPrice > 0 && (
-                        <span className="text-amber-600 ml-1 text-[10px]">
-                          × {childUnitPrice.toLocaleString('fr-FR')} DT
-                        </span>
-                      )}
+                  <div className="flex items-center justify-between gap-2 text-sm">
+                    <span className="text-slate-500 shrink-0">
+                      {children} Enfant{children > 1 ? 's' : ''} ×
                     </span>
-                    <span className="font-mono font-medium">{(childUnitPrice * children).toLocaleString('fr-FR')} DT</span>
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number" min={0} step="0.5"
+                        value={customChildPrice}
+                        onChange={(e) => setCustomChildPrice(Math.max(0, Number(e.target.value) || 0))}
+                        disabled={paid}
+                        className="w-20 border-b border-amber-400/50 bg-transparent text-center font-mono text-sm outline-none focus:border-amber-500 disabled:opacity-50"
+                      />
+                      <span className="text-[10px] text-slate-400">DT</span>
+                    </div>
+                    <span className="font-mono font-semibold text-amber-600 shrink-0">
+                      {dt(childUnitPrice * children)}
+                    </span>
                   </div>
                 )}
               </>
@@ -935,32 +953,62 @@ function InvoiceDialog({
           </div>
 
           {/* Consommation */}
-          {orderItems.length > 0 && (
-            <div className="rounded-sm border border-black/5 bg-slate-50/60 p-4 space-y-2">
-              <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-slate-500 border-b border-black/5 pb-2 mb-3">
-                Consommation
-              </div>
-              {orderItems.map((item, idx) => (
-                <div key={idx} className="space-y-0.5">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-700 flex-1 min-w-0 truncate pr-2">
-                      {norm(item.quantity)}× {item.name}
-                    </span>
-                    <span className="font-mono font-medium shrink-0">
-                      {(norm(item.unit_price) * norm(item.quantity)).toLocaleString('fr-FR')} DT
-                    </span>
+          <div className="rounded-sm border border-black/5 bg-slate-50/60 p-4 space-y-2">
+            <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-slate-500 border-b border-black/5 pb-2 mb-3">
+              Consommation — Extra / Boissons
+            </div>
+            {orderItems.length > 0 ? (
+              <>
+                {orderItems.map((item, idx) => (
+                  <div key={idx} className="space-y-0.5">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-700 flex-1 min-w-0 truncate pr-2">
+                        {norm(item.quantity)}× {item.name}
+                      </span>
+                      <span className="font-mono font-medium shrink-0">
+                        {(norm(item.unit_price) * norm(item.quantity)).toLocaleString('fr-FR')} DT
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-slate-400 pl-3">
+                      {norm(item.unit_price).toLocaleString('fr-FR')} DT / unité
+                    </div>
                   </div>
-                  <div className="text-[10px] text-slate-400 pl-3">
-                    {norm(item.unit_price).toLocaleString('fr-FR')} DT / unité
+                ))}
+                {computedOrderTotal !== customOrderTotal && (
+                  <div className="flex justify-between text-xs text-slate-300 line-through select-none">
+                    <span>Calculé</span>
+                    <span className="font-mono">{dt(computedOrderTotal)}</span>
                   </div>
-                </div>
-              ))}
-              <div className="flex justify-between text-sm text-slate-500 pt-2 border-t border-black/5 mt-2">
-                <span>Sous-total consommation</span>
-                <span className="font-mono">{orderTotal.toLocaleString('fr-FR')} DT</span>
+                )}
+              </>
+            ) : (
+              <p className="text-sm text-center text-slate-400 py-1">
+                Aucun article — entrez un montant si nécessaire
+              </p>
+            )}
+            {/* Editable total */}
+            <div className="flex items-center justify-between pt-2 border-t border-black/5">
+              <span className="text-sm text-slate-500 font-medium">Total consommation</span>
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="number" min={0} step="0.5"
+                  value={customOrderTotal}
+                  onChange={(e) => setCustomOrderTotal(Math.max(0, Number(e.target.value) || 0))}
+                  disabled={paid}
+                  className="w-24 border-b border-flamingo/40 bg-transparent text-right font-mono text-sm font-bold outline-none focus:border-flamingo disabled:opacity-50"
+                />
+                <span className="text-xs text-slate-400">DT</span>
+                {computedOrderTotal !== customOrderTotal && !paid && (
+                  <button
+                    type="button"
+                    onClick={() => setCustomOrderTotal(computedOrderTotal)}
+                    title="Réinitialiser au total calculé"
+                    className="text-xs text-blue-500 hover:text-blue-700 ml-1"
+                  >↺</button>
+                )}
               </div>
             </div>
-          )}
+          </div>
 
           {/* Remise */}
           <div className="rounded-sm border border-black/5 bg-slate-50/60 p-4 space-y-3">
@@ -1012,34 +1060,44 @@ function InvoiceDialog({
             <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-slate-500 border-b border-black/5 pb-2 mb-3">
               Récapitulatif
             </div>
-            {reservationTotal > 0 && (
+            {adults > 0 && (
               <div className="flex justify-between text-sm">
-                <span className="text-slate-500">Réservation</span>
-                <span className="font-mono">{reservationTotal.toLocaleString('fr-FR')} DT</span>
+                <span className="text-slate-500">
+                  {adults}A × {dt(adultUnitPrice)}
+                </span>
+                <span className="font-mono">{dt(adultUnitPrice * adults)}</span>
+              </div>
+            )}
+            {children > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-500">
+                  {children}ENF × {dt(childUnitPrice)}
+                </span>
+                <span className="font-mono text-amber-600">{dt(childUnitPrice * children)}</span>
               </div>
             )}
             {orderTotal > 0 && (
               <div className="flex justify-between text-sm">
                 <span className="text-slate-500">Consommation</span>
-                <span className="font-mono">{orderTotal.toLocaleString('fr-FR')} DT</span>
+                <span className="font-mono">{dt(orderTotal)}</span>
               </div>
             )}
             {discountPercent > 0 && (
               <>
-                <div className="flex justify-between text-sm text-slate-400">
+                <div className="flex justify-between text-sm text-slate-400 border-t border-black/5 pt-1.5">
                   <span>Sous-total</span>
-                  <span className="font-mono">{subtotal.toLocaleString('fr-FR')} DT</span>
+                  <span className="font-mono">{dt(subtotal)}</span>
                 </div>
                 <div className="flex justify-between text-sm text-red-500 font-medium">
                   <span>Remise {discountPercent}%</span>
-                  <span className="font-mono">− {discountAmount.toLocaleString('fr-FR')} DT</span>
+                  <span className="font-mono">− {dt(discountAmount)}</span>
                 </div>
               </>
             )}
             <div className="flex justify-between font-bold pt-2 border-t border-black/10">
               <span className="uppercase tracking-wider text-[11px]">Total net</span>
               <span className="font-mono text-xl" style={{ color: '#F59B35' }}>
-                {finalTotal.toLocaleString('fr-FR')} DT
+                {dt(finalTotal)}
               </span>
             </div>
           </div>

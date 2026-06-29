@@ -250,10 +250,14 @@ class ReservationsFragment : Fragment() {
 
     private fun isValidPhoneNumber(phone: String): Boolean {
         val normalized = normalizePhoneNumber(phone)
-        val tunisian = Regex("^((\\+|00)216[2459]\\d{7}|[2459]\\d{7})$")
-        val french = Regex("^((\\+|00)33[1-9]\\d{8}|0[1-9]\\d{8})$")
-        val italian = Regex("^((\\+|00)39\\d{8,11})$")
-        return tunisian.matches(normalized) || french.matches(normalized) || italian.matches(normalized)
+        val tunisian  = Regex("^((\\+|00)216[2459]\\d{7}|[2459]\\d{7})$")
+        val french    = Regex("^((\\+|00)33[1-9]\\d{8}|0[1-9]\\d{8})$")
+        val italian   = Regex("^((\\+|00)39\\d{8,11})$")
+        val algerian  = Regex("^((\\+|00)213[5-7]\\d{8}|0[5-7]\\d{8})$")
+        val libyan    = Regex("^((\\+|00)218[29]\\d{8}|0[29]\\d{8})$")
+        return tunisian.matches(normalized) || french.matches(normalized) ||
+               italian.matches(normalized)  || algerian.matches(normalized) ||
+               libyan.matches(normalized)
     }
 
     private fun isPastDate(dateIso: String): Boolean {
@@ -606,6 +610,29 @@ class ReservationsFragment : Fragment() {
             .setNegativeButton("Annuler", null)
             .create()
 
+        dialog.setCanceledOnTouchOutside(false)
+
+        dialog.setOnKeyListener { _, keyCode, event ->
+            if (keyCode == android.view.KeyEvent.KEYCODE_BACK && event.action == android.view.KeyEvent.ACTION_UP) {
+                val hasData = etFirstName.text?.isNotBlank() == true ||
+                        etLastName.text?.isNotBlank() == true ||
+                        etPhone.text?.isNotBlank() == true
+                if (hasData) {
+                    MaterialAlertDialogBuilder(ctx)
+                        .setTitle("Quitter sans sauvegarder ?")
+                        .setMessage("Les informations saisies seront perdues.")
+                        .setPositiveButton("Quitter") { _, _ -> dialog.dismiss() }
+                        .setNegativeButton("Continuer", null)
+                        .show()
+                } else {
+                    dialog.dismiss()
+                }
+                true
+            } else {
+                false
+            }
+        }
+
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 val firstName    = etFirstName.text?.toString()?.trim().orEmpty()
@@ -621,7 +648,7 @@ class ReservationsFragment : Fragment() {
                 tilLastName.error  = if (lastName.isBlank())  "Obligatoire" else null
                 tilPhone.error     = when {
                     phone.isBlank()                    -> "Obligatoire"
-                    !isValidPhoneNumber(phone)         -> "Numéro invalide (TN / FR / IT)"
+                    !isValidPhoneNumber(phone)         -> "Numéro invalide (TN / FR / IT / DZ / LY)"
                     else                               -> null
                 }
 

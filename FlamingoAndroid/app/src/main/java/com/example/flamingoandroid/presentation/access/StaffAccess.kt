@@ -44,6 +44,8 @@ object StaffAccess {
         ),
         ROLE_BARMAN to setOf(
             FEATURE_KITCHEN_ORDERS,
+            FEATURE_PLACE_ORDER,
+            FEATURE_MENU_TABLES,
         ),
         ROLE_NONE to emptySet(),
     )

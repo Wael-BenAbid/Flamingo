@@ -58,7 +58,7 @@ export const STAFF_FEATURE_ACCESS: Record<StaffRole, StaffFeature[]> = {
   admin:       ['dashboard', 'reservations', 'arrivals', 'workers', 'stock', 'reports', 'settings', 'menuTables', 'kitchenOrders', 'placeOrder', 'payment', 'auditLog'],
   responsable: ['dashboard', 'reservations', 'arrivals', 'workers', 'stock', 'settings', 'menuTables', 'kitchenOrders', 'placeOrder', 'payment', 'auditLog'],
   cuisinier:   ['kitchenOrders'],
-  barman:      ['kitchenOrders'],
+  barman:      ['kitchenOrders', 'placeOrder'],
   serveur:     ['placeOrder'],
   none:        [],
 };

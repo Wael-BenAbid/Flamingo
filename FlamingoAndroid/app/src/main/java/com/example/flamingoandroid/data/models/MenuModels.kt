@@ -46,6 +46,7 @@ data class TableOrder(
     val children: Int = 0,
     val clientName: String = "",
     val source: String = "",
+    val scheduled_time: String? = null, // "HH:mm" — null = service immédiat
 ) {
     val finalTotal: Double get() = grandTotal ?: total_price
 }

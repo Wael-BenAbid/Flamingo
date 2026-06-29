@@ -97,8 +97,8 @@ class AdminLoginActivity : AppCompatActivity() {
                 .putExtra(TableOrderingActivity.EXTRA_SERVER_NAME,
                     user?.displayName?.takeIf { it.isNotBlank() }
                         ?: user?.email?.substringBefore("@") ?: "Serveur")
-            StaffAccess.ROLE_CUISINIER,
-            StaffAccess.ROLE_BARMAN -> Intent(this, KitchenDashboardActivity::class.java)
+            StaffAccess.ROLE_CUISINIER -> Intent(this, KitchenDashboardActivity::class.java)
+            StaffAccess.ROLE_BARMAN -> Intent(this, HomeActivity::class.java)
             else -> Intent(this, HomeActivity::class.java)
         }
         startActivity(intent)

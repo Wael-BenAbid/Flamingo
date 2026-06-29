@@ -164,6 +164,8 @@ class MenuOrderingFirebaseService {
         val payload = mapOf(
             "name" to category.name,
             "display_order" to category.display_order,
+            "available" to true,
+            "target_role" to category.target_role,
             "updatedAt" to Timestamp.now(),
             "createdAt" to Timestamp.now(),
         )
@@ -190,6 +192,7 @@ class MenuOrderingFirebaseService {
             "category_id" to item.category_id,
             "price" to item.price,
             "is_available" to item.is_available,
+            "available" to item.is_available,
             "updatedAt" to Timestamp.now(),
             "createdAt" to Timestamp.now(),
         )
@@ -216,6 +219,7 @@ class MenuOrderingFirebaseService {
         serverName: String,
         items: List<TableOrderItem>,
         totalPrice: Double,
+        scheduledTime: String? = null,
     ): Result<String> = try {
         val payload = mapOf(
             "table_number" to tableNumber,
@@ -226,6 +230,7 @@ class MenuOrderingFirebaseService {
             "updated_at" to Timestamp.now(),
             "items" to items,
             "total_price" to totalPrice,
+            "scheduled_time" to (scheduledTime ?: ""),
         )
         val docRef = db.collection("table_orders").add(payload).await()
         Result.success(docRef.id)
@@ -239,11 +244,13 @@ class MenuOrderingFirebaseService {
         totalPrice: Double,
         serverId: String = "",
         serverName: String = "",
+        scheduledTime: String? = null,
     ): Result<Unit> = try {
         val payload = mutableMapOf<String, Any>(
             "items" to items,
             "total_price" to totalPrice,
             "updated_at" to Timestamp.now(),
+            "scheduled_time" to (scheduledTime ?: ""),
         )
         if (serverId.isNotBlank()) payload["server_id"] = serverId
         if (serverName.isNotBlank()) payload["server_name"] = serverName

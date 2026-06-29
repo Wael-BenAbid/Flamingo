@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Timestamp, doc, getDoc, setDoc } from 'firebase/firestore';
-import { Loader2, PencilLine, Save, Table2, Tags, Trash2, UtensilsCrossed } from 'lucide-react';
+import { Cake, Loader2, PencilLine, Save, Table2, Tags, Trash2, UtensilsCrossed } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useFirestore } from '../hooks/useFirestore';
 import { db } from '../lib/firebase';
@@ -34,6 +34,8 @@ interface Position {
 
 interface AppConfigDoc {
   total_tables_count: number;
+  dessert_ratio_dishes?: number;
+  dessert_ratio_persons?: number;
 }
 
 const DEFAULT_CATEGORY_FORM = {
@@ -76,6 +78,9 @@ export default function MenuAndTablesManagement() {
   const [firestoreError, setFirestoreError] = useState<string | null>(null);
   const [isSavingConfig, setIsSavingConfig] = useState(false);
   const [totalTablesCount, setTotalTablesCount] = useState(0);
+  const [dessertDishes, setDessertDishes] = useState(1);
+  const [dessertPersons, setDessertPersons] = useState(3);
+  const [isSavingDessert, setIsSavingDessert] = useState(false);
   const [categories, setCategories] = useState<MenuCategory[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
@@ -117,6 +122,8 @@ export default function MenuAndTablesManagement() {
         const snapshot = await getDoc(doc(db, 'settings', 'app_config'));
         const data = snapshot.data() as AppConfigDoc | undefined;
         setTotalTablesCount(data?.total_tables_count ?? 0);
+        setDessertDishes(data?.dessert_ratio_dishes ?? 1);
+        setDessertPersons(data?.dessert_ratio_persons ?? 3);
         setFirestoreError(null);
       } catch (error) {
         setFirestoreError('Impossible de charger la configuration Firestore. Vérifiez les règles et les données de menu.');
@@ -163,6 +170,23 @@ export default function MenuAndTablesManagement() {
       );
     } finally {
       setIsSavingConfig(false);
+    }
+  };
+
+  const saveDessertConfig = async () => {
+    setIsSavingDessert(true);
+    try {
+      await setDoc(
+        doc(db, 'settings', 'app_config'),
+        {
+          dessert_ratio_dishes: Math.max(1, Number(dessertDishes) || 1),
+          dessert_ratio_persons: Math.max(1, Number(dessertPersons) || 1),
+          updatedAt: Timestamp.now(),
+        },
+        { merge: true }
+      );
+    } finally {
+      setIsSavingDessert(false);
     }
   };
 
@@ -672,6 +696,89 @@ export default function MenuAndTablesManagement() {
           </div>
         </section>
       </div>
+
+      {/* ── Dessert Standard ──────────────────────────────────────────── */}
+      <section className="bg-white border border-black/5 p-6 space-y-5">
+        <div className="flex items-center gap-3">
+          <Cake className="w-5 h-5 text-flamingo" />
+          <div>
+            <h3 className="text-lg font-serif">Dessert Standard</h3>
+            <p className="text-[10px] uppercase tracking-widest opacity-40 font-bold">
+              Ratio automatique · settings/app_config
+            </p>
+          </div>
+        </div>
+
+        <p className="text-sm text-slate-500">
+          Définissez le nombre de plats de dessert à servir selon le nombre de personnes par table.
+          Le calcul est automatique dans la page Commandes.
+        </p>
+
+        {canEditMenu ? (
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="space-y-1">
+              <label className="text-[10px] uppercase tracking-widest opacity-50 font-bold">
+                Plats de dessert
+              </label>
+              <input
+                type="number"
+                min={1}
+                value={dessertDishes}
+                onChange={(e) => setDessertDishes(Math.max(1, Number(e.target.value) || 1))}
+                className="h-11 w-24 border border-black/10 px-3 text-sm outline-none focus:border-flamingo"
+              />
+            </div>
+            <span className="mb-2 text-sm text-slate-400 font-medium">plat(s)  pour</span>
+            <div className="space-y-1">
+              <label className="text-[10px] uppercase tracking-widest opacity-50 font-bold">
+                Personnes
+              </label>
+              <input
+                type="number"
+                min={1}
+                value={dessertPersons}
+                onChange={(e) => setDessertPersons(Math.max(1, Number(e.target.value) || 1))}
+                className="h-11 w-24 border border-black/10 px-3 text-sm outline-none focus:border-flamingo"
+              />
+            </div>
+            <span className="mb-2 text-sm text-slate-400 font-medium">personne(s)</span>
+            <button
+              type="button"
+              onClick={saveDessertConfig}
+              disabled={isSavingDessert}
+              className="inline-flex items-center gap-2 bg-flamingo text-white px-4 h-11 uppercase text-[10px] font-bold tracking-[0.25em] disabled:opacity-60"
+            >
+              {isSavingDessert ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              Sauver
+            </button>
+          </div>
+        ) : (
+          <div className="rounded-sm border border-black/5 bg-slate-50 p-4 text-sm">
+            <div className="text-[10px] uppercase tracking-widest opacity-50 font-bold mb-1">Ratio actuel</div>
+            <div className="text-xl font-serif">
+              {dessertDishes} plat{dessertDishes > 1 ? 's' : ''} pour {dessertPersons} personne{dessertPersons > 1 ? 's' : ''}
+            </div>
+          </div>
+        )}
+
+        {/* Preview table */}
+        <div className="rounded-sm bg-slate-50 border border-black/5 p-4">
+          <div className="text-[10px] uppercase tracking-widest opacity-50 font-bold mb-3">
+            Aperçu du calcul — {dessertDishes} plt / {dessertPersons} pers.
+          </div>
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-center">
+            {[1, 2, 3, 4, 6, 7, 9, 10, 12, 15, 18, 20].map((p) => {
+              const plats = Math.ceil(p / Math.max(1, dessertPersons)) * Math.max(1, dessertDishes);
+              return (
+                <div key={p} className="rounded-sm bg-white border border-black/5 py-2 px-1">
+                  <div className="text-lg font-bold text-flamingo">{plats}</div>
+                  <div className="text-[10px] opacity-50">{p} pers.</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

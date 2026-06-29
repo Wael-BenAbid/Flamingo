@@ -179,6 +179,8 @@ class ReservationRepository {
         reservationId: String,
         positionType: String,
         positionNumber: String,
+        adults: Int,
+        children: Int,
     ): Result<Unit> = try {
         db.collection("reservations").document(reservationId)
             .update(
@@ -186,6 +188,8 @@ class ReservationRepository {
                     "status"         to "confirmed",
                     "positionType"   to positionType,
                     "positionNumber" to positionNumber,
+                    "adults"         to adults,
+                    "children"       to children,
                     "checkIn"        to Timestamp.now(),
                     "updatedAt"      to Timestamp.now(),
                 )

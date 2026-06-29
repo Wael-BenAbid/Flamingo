@@ -176,13 +176,13 @@ export default function Login() {
       <div className="hidden lg:flex flex-col justify-between w-[45%] bg-navy relative overflow-hidden p-12">
         <div className="absolute inset-0 bg-gradient-to-br from-navy via-navy/90 to-flamingo/20" />
         <img
-          src="https://firebasestorage.googleapis.com/v0/b/flamingo-ea5e5.firebasestorage.app/o/flamingo.jpeg?alt=media&token=eb138c1e-a9e1-405a-9b47-de81c2588b88"
+          src="/logo-flamingo.jpeg"
           alt="Flamingo"
           className="absolute inset-0 w-full h-full object-cover opacity-20 mix-blend-luminosity"
         />
         <div className="relative z-10">
           <div className="flex items-center gap-3 mb-2">
-            <img src="https://firebasestorage.googleapis.com/v0/b/flamingo-ea5e5.firebasestorage.app/o/flamingo.jpeg?alt=media&token=eb138c1e-a9e1-405a-9b47-de81c2588b88" alt="Logo" className="w-12 h-12 rounded-xl object-cover shadow-lg" />
+            <img src="/logo-flamingo.jpeg" alt="Logo" className="w-12 h-12 rounded-xl object-cover shadow-lg" />
             <span className="text-white text-2xl font-bold tracking-widest uppercase">Flamingo</span>
           </div>
           <p className="text-white/50 text-xs uppercase tracking-widest">Beach Club & Restaurant</p>
@@ -205,7 +205,7 @@ export default function Login() {
       <Card className="w-full max-w-[420px] relative z-10 shadow-xl border border-border/50 bg-white/80 backdrop-blur-sm">
         <CardHeader className="text-center space-y-4 pb-2 pt-8">
           <div className="mx-auto w-20 h-20 rounded-2xl overflow-hidden shadow-xl shadow-flamingo/20 transition-transform duration-300 hover:scale-105 border-2 border-flamingo/20">
-            <img src="https://firebasestorage.googleapis.com/v0/b/flamingo-ea5e5.firebasestorage.app/o/flamingo.jpeg?alt=media&token=eb138c1e-a9e1-405a-9b47-de81c2588b88" alt="Flamingo Logo" className="w-full h-full object-cover" />
+            <img src="/logo-flamingo.jpeg" alt="Flamingo Logo" className="w-full h-full object-cover" />
           </div>
           <div className="space-y-1">
             <CardTitle className="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-flamingo to-navy">

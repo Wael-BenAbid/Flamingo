@@ -1,10 +1,12 @@
 import * as React from 'react';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { format, startOfToday } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Calendar as CalendarIcon, Plus, Search, Users } from 'lucide-react';
+import { Calendar as CalendarIcon, Plus, Search, Users, X } from 'lucide-react';
 import { useReservations, type Reservation, type ReservationFormData } from '@/hooks/useReservations';
+import { useAuth } from '@/context/AuthContext';
+import { logAudit } from '@/lib/auditLogger';
 import {
   GlassReservationCard,
   ReservationDateHeader,
@@ -28,6 +30,7 @@ import {
 
 // ── Page component ─────────────────────────────────────────────────────
 export default function Reservations() {
+  const { user, role } = useAuth();
   const {
     reservations, positions, isLoading,
     normalizePhone, isValidPhone, isPastDate,
@@ -39,6 +42,7 @@ export default function Reservations() {
 
   // ── UI state (pure presentation — no Firestore logic here) ──────────
   const [selectedMonth,        setSelectedMonth]        = useState<Date>(startOfToday());
+  const [selectedDay,          setSelectedDay]          = useState<string | null>(format(startOfToday(), 'yyyy-MM-dd'));
   const [search,               setSearch]               = useState('');
   const [isDialogOpen,         setIsDialogOpen]         = useState(false);
   const [editingId,            setEditingId]            = useState<string | null>(null);
@@ -53,8 +57,35 @@ export default function Reservations() {
   const displayed    = search.trim() ? searchReservations(search) : null;
 
   const monthResevations = [...activeGroups, ...pastGroups].flatMap((g) => g.items);
-  const monthTotalAdults   = monthResevations.reduce((s, r) => s + (r.adults || 0), 0);
-  const monthTotalChildren = monthResevations.reduce((s, r) => s + (r.children || 0), 0);
+
+  // Days that have at least one reservation (for calendar dot indicator)
+  const daysWithReservations = useMemo(
+    () => new Set(monthResevations.map((r) => r.date)),
+    [monthResevations],
+  );
+
+  // Day-filtered groups (or full month when no day selected)
+  const displayedActive = selectedDay
+    ? activeGroups.filter((g) => g.date === selectedDay)
+    : activeGroups;
+  const displayedPast = selectedDay
+    ? pastGroups.filter((g) => g.date === selectedDay)
+    : pastGroups;
+
+  // Stats change based on current filter
+  const statReservations = selectedDay
+    ? monthResevations.filter((r) => r.date === selectedDay)
+    : monthResevations;
+  const monthTotalAdults   = statReservations.reduce((s, r) => s + (r.adults || 0), 0);
+  const monthTotalChildren = statReservations.reduce((s, r) => s + (r.children || 0), 0);
+
+  const handleCalendarSelect = (d: Date | undefined) => {
+    if (!d) return;
+    setSelectedMonth(d);
+    setSelectedDay(format(d, 'yyyy-MM-dd'));
+  };
+
+  const clearDayFilter = () => setSelectedDay(null);
 
   const selectedDate         = formData.date ?? format(startOfToday(), 'yyyy-MM-dd');
   const selectedPositionType = formData.positionType ?? '';
@@ -96,7 +127,7 @@ export default function Reservations() {
     if (!formData.firstName?.trim())                             errors.push('prénom');
     if (!formData.lastName?.trim())                              errors.push('nom');
     if (!phone)                                                  errors.push('téléphone');
-    if (phone && !isValidPhone(phone))                           errors.push('numéro valide (TN/FR/IT)');
+    if (phone && !isValidPhone(phone))                           errors.push('numéro valide (TN/FR/IT/DZ/LY)');
     if (!adults || adults <= 0)                                  errors.push("nombre d'adultes");
     if (!formData.date)                                          errors.push('date');
     if (formData.date && isPastDate(formData.date))              errors.push('date dans le futur');
@@ -131,12 +162,44 @@ export default function Reservations() {
 
     if (editingId) {
       await updateReservation(editingId, payload);
+      logAudit(user, role, 'update-reservation', {
+        collection: 'reservations',
+        documentId: editingId,
+        details: { name: `${payload.firstName} ${payload.lastName}`, date: payload.date, adults: payload.adults, children: payload.children },
+      });
     } else {
-      await createReservation(payload);
+      const newId = await createReservation(payload);
+      logAudit(user, role, 'create-reservation', {
+        collection: 'reservations',
+        documentId: newId ?? undefined,
+        details: { name: `${payload.firstName} ${payload.lastName}`, date: payload.date, adults: payload.adults, children: payload.children },
+      });
     }
 
     setIsSubmitting(false);
     closeDialog();
+  };
+
+  // ── Audit-wrapped handlers ────────────────────────────────────────
+
+  const handleDeleteReservation = async (id: string) => {
+    const res = reservations.find((r) => r.id === id);
+    await deleteReservation(id);
+    logAudit(user, role, 'delete-reservation', {
+      collection: 'reservations',
+      documentId: id,
+      details: res ? { name: `${res.firstName} ${res.lastName}`, date: res.date } : undefined,
+    });
+  };
+
+  const handleUpdateStatus = async (id: string, status: Reservation['status']) => {
+    await updateStatus(id, status);
+    const res = reservations.find((r) => r.id === id);
+    logAudit(user, role, `status-${status}`, {
+      collection: 'reservations',
+      documentId: id,
+      details: res ? { name: `${res.firstName} ${res.lastName}`, status } : { status },
+    });
   };
 
   // ── Render ────────────────────────────────────────────────────────
@@ -156,24 +219,60 @@ export default function Reservations() {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Month picker */}
+          {/* Day / Month picker */}
+          {selectedDay && (
+            <button
+              onClick={clearDayFilter}
+              className="h-10 px-4 rounded-xl text-[11px] font-bold uppercase tracking-widest border border-border text-foreground/50 hover:text-foreground flex items-center gap-1.5 transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+              Tout le mois
+            </button>
+          )}
           <Popover>
             <PopoverTrigger
               render={
                 <Button
                   variant="outline"
-                  className="h-10 px-6 rounded-xl text-[11px] font-bold uppercase tracking-widest border-border text-foreground/60 hover:text-foreground"
+                  className="h-10 px-4 rounded-xl text-[11px] font-bold uppercase tracking-widest border-border text-foreground/60 hover:text-foreground flex items-center gap-2"
                 >
-                  Changer Mois
+                  <CalendarIcon className="w-3.5 h-3.5" />
+                  {selectedDay
+                    ? format(new Date(`${selectedDay}T00:00:00`), 'dd MMM yyyy', { locale: fr })
+                    : format(selectedMonth, 'MMMM yyyy', { locale: fr })
+                  }
                 </Button>
               }
             />
             <PopoverContent className="w-auto p-0" align="end">
               <Calendar
                 mode="single"
-                selected={selectedMonth}
-                onSelect={(d) => d && setSelectedMonth(d)}
+                selected={selectedDay ? new Date(`${selectedDay}T00:00:00`) : undefined}
+                month={selectedMonth}
+                onMonthChange={setSelectedMonth}
+                onSelect={handleCalendarSelect}
+                modifiers={{ hasReservation: (d) => daysWithReservations.has(format(d, 'yyyy-MM-dd')) }}
+                modifiersClassNames={{ hasReservation: 'font-bold underline decoration-primary decoration-2' }}
               />
+              <div className="p-2 border-t flex gap-2">
+                <Button
+                  size="sm"
+                  className="flex-1 text-[10px] uppercase tracking-widest"
+                  onClick={() => { setSelectedDay(format(startOfToday(), 'yyyy-MM-dd')); setSelectedMonth(startOfToday()); }}
+                >
+                  Aujourd'hui
+                </Button>
+                {selectedDay && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1 text-[10px] uppercase tracking-widest"
+                    onClick={clearDayFilter}
+                  >
+                    Tout le mois
+                  </Button>
+                )}
+              </div>
             </PopoverContent>
           </Popover>
 
@@ -335,7 +434,7 @@ export default function Reservations() {
         </div>
       </div>
 
-      {/* ── Stats adultes/enfants du mois ─────────────────────────── */}
+      {/* ── Stats adultes/enfants ─────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <span className="flex items-center gap-1.5 font-semibold text-foreground">
           <Users className="w-4 h-4 text-primary" />
@@ -346,7 +445,10 @@ export default function Reservations() {
           {monthTotalChildren} Enfants
         </span>
         <span className="text-foreground/30">·</span>
-        <span className="text-foreground/50 text-xs">{monthResevations.length} réservations ce mois</span>
+        <span className="text-foreground/50 text-xs">
+          {statReservations.length} réservation{statReservations.length !== 1 ? 's' : ''}
+          {selectedDay ? ' ce jour' : ' ce mois'}
+        </span>
       </div>
 
       {/* ── Search bar ────────────────────────────────────────────── */}
@@ -377,9 +479,10 @@ export default function Reservations() {
               <GlassReservationCard
                 res={r}
                 date={r.date}
-                onStatusChange={updateStatus}
+                positions={positions}
+                onStatusChange={handleUpdateStatus}
                 onEdit={openEdit}
-                onDelete={deleteReservation}
+                onDelete={handleDeleteReservation}
               />
             </motion.div>
           ))}
@@ -389,7 +492,7 @@ export default function Reservations() {
       {/* ── Active reservations by date ───────────────────────────── */}
       {!isLoading && !displayed && (
         <div className="space-y-8">
-          {activeGroups.map(({ date, items }) => (
+          {displayedActive.map(({ date, items }) => (
             <div key={date} className="space-y-4">
               <ReservationDateHeader date={date} count={items.length} />
               <ReservationCardGrid>
@@ -398,9 +501,10 @@ export default function Reservations() {
                     <GlassReservationCard
                       res={r}
                       date={date}
-                      onStatusChange={updateStatus}
+                      positions={positions}
+                      onStatusChange={handleUpdateStatus}
                       onEdit={openEdit}
-                      onDelete={deleteReservation}
+                      onDelete={handleDeleteReservation}
                     />
                   </motion.div>
                 ))}
@@ -409,7 +513,7 @@ export default function Reservations() {
           ))}
 
           {/* Empty state */}
-          {activeGroups.length === 0 && !isLoading && (
+          {displayedActive.length === 0 && !isLoading && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -419,24 +523,24 @@ export default function Reservations() {
                 <CalendarIcon className="w-9 h-9 text-primary/30" />
               </div>
               <p className="font-bold uppercase tracking-widest text-[10px] text-muted-foreground">
-                Aucune réservation ce mois
+                {selectedDay ? 'Aucune réservation ce jour' : 'Aucune réservation ce mois'}
               </p>
             </motion.div>
           )}
 
           {/* Past reservations */}
-          {pastGroups.length > 0 && (
+          {displayedPast.length > 0 && (
             <div className="pt-6 space-y-6 border-t border-dashed border-border">
               <div className="px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 border-l-4 border-l-slate-300">
                 <p className="font-bold text-sm text-slate-600">
                   Historique des réservations passées
                 </p>
                 <p className="text-[10px] font-bold uppercase tracking-wider mt-0.5 text-slate-400">
-                  {pastGroups.reduce((s, g) => s + g.items.length, 0)} réservation(s)
+                  {displayedPast.reduce((s, g) => s + g.items.length, 0)} réservation(s)
                 </p>
               </div>
 
-              {pastGroups.map(({ date, items }) => (
+              {displayedPast.map(({ date, items }) => (
                 <div key={date} className="space-y-4 opacity-80">
                   <ReservationDateHeader date={date} count={items.length} isPast />
                   <ReservationCardGrid>
@@ -445,9 +549,10 @@ export default function Reservations() {
                         <GlassReservationCard
                           res={r}
                           date={date}
-                          onStatusChange={updateStatus}
+                          positions={positions}
+                          onStatusChange={handleUpdateStatus}
                           onEdit={openEdit}
-                          onDelete={deleteReservation}
+                          onDelete={handleDeleteReservation}
                           isPast
                         />
                       </motion.div>

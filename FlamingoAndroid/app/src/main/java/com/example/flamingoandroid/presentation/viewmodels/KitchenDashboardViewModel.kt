@@ -18,17 +18,25 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.util.Calendar
 
 class KitchenDashboardViewModel(
     private val service: MenuOrderingFirebaseService = MenuOrderingFirebaseService(),
     private val authRepo: AuthRepository = AuthRepository(),
 ) : ViewModel() {
 
-    private val _orders         = MutableStateFlow<List<TableOrder>>(emptyList())
-    private val _menuCategories = MutableStateFlow<List<MenuCategory>>(emptyList())
-    private val _menuItems      = MutableStateFlow<List<MenuItem>>(emptyList())
-    private val _userRole       = MutableStateFlow<String?>(null)
+    private val _orders             = MutableStateFlow<List<TableOrder>>(emptyList())
+    private val _menuCategories     = MutableStateFlow<List<MenuCategory>>(emptyList())
+    private val _menuItems          = MutableStateFlow<List<MenuItem>>(emptyList())
+    private val _userRole           = MutableStateFlow<String?>(null)
+    private val _currentMinuteOfDay = MutableStateFlow(minuteOfDay())
+
+    private fun minuteOfDay(): Int {
+        val cal = Calendar.getInstance()
+        return cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
+    }
 
     private val _isLoading    = MutableStateFlow(true)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
@@ -46,14 +54,29 @@ class KitchenDashboardViewModel(
         }
         .stateIn(viewModelScope, SharingStarted.Eagerly, "Commandes Cuisine & Bar")
 
-    /** Orders filtered to show only items relevant to the current user's role. */
+    /** Orders filtered by scheduled time + role, always sorted by original creation time. */
     val filteredOrders: StateFlow<List<TableOrder>> = combine(
-        _orders, _userRole, _menuCategories, _menuItems,
-    ) { orders, role, categories, items ->
+        _orders, _userRole, _menuCategories, _menuItems, _currentMinuteOfDay,
+    ) { orders: List<TableOrder>, role: String?, categories: List<MenuCategory>, items: List<MenuItem>, currentMinute: Int ->
+        // 1. Filter out orders whose scheduled service time hasn't arrived yet
+        val timeVisible = orders.filter { order ->
+            val t = order.scheduled_time
+            if (t.isNullOrBlank()) true
+            else {
+                val parts = t.split(":")
+                if (parts.size != 2) true
+                else {
+                    val h = parts[0].toIntOrNull() ?: 0
+                    val m = parts[1].toIntOrNull() ?: 0
+                    h * 60 + m <= currentMinute
+                }
+            }
+        }
+        // 2. Role-based item filtering
         val categoryRoles = categories.associate { it.id to it.target_role }
         val lookup = items.associate { it.id to categoryRoles[it.category_id] }
-        when (role) {
-            "cuisinier", "barman" -> orders
+        val roleFiltered = when (role) {
+            "cuisinier", "barman" -> timeVisible
                 .map { order ->
                     order.copy(
                         items = order.items.filter { item ->
@@ -63,8 +86,13 @@ class KitchenDashboardViewModel(
                     )
                 }
                 .filter { it.items.isNotEmpty() }
-            else -> orders
+            else -> timeVisible
         }
+        // 3. Always sort by original creation time so modifications never change position
+        roleFiltered.sortedWith(
+            compareBy<TableOrder> { it.created_at?.toDate()?.time ?: Long.MAX_VALUE }
+                .thenBy { it.id }
+        )
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     /** Sorted list of (name, total quantity) across all active filtered orders. */
@@ -84,6 +112,14 @@ class KitchenDashboardViewModel(
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     init {
+        // Refresh current minute every 60 s so scheduled orders appear on time
+        viewModelScope.launch {
+            while (true) {
+                delay(60_000)
+                _currentMinuteOfDay.value = minuteOfDay()
+            }
+        }
+
         viewModelScope.launch {
             val user = FirebaseAuth.getInstance().currentUser
             _userRole.value = authRepo.getCurrentUserRole(user)

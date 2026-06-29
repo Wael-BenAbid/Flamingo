@@ -58,6 +58,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -103,6 +104,7 @@ fun TableOrderingActivityContent(
     val isSubmitting   by viewModel.isSubmitting.collectAsState()
     val errorMessage   by viewModel.errorMessage.collectAsState()
     val activeOrderId  by viewModel.activeOrderId.collectAsState()
+    val scheduledTime  by viewModel.scheduledTime.collectAsState()
     val tablesState    by tablesViewModel.uiState.collectAsState()
 
     // Adultes/Enfants de la table sélectionnée (depuis les réservations confirmées)
@@ -139,6 +141,8 @@ fun TableOrderingActivityContent(
                 cart          = cart,
                 activeOrders  = activeOrders,
                 activeOrderId = activeOrderId,
+                scheduledTime = scheduledTime,
+                onScheduledTimeChange = viewModel::setScheduledTime,
                 tabIndex      = tabIndex,
                 onTabChanged  = { tabIndex = it },
                 onAddItem     = { viewModel.addItem(it) },
@@ -173,6 +177,8 @@ fun TableOrderScreen(
     cart: List<OrderCartLine>,
     activeOrders: List<TableOrder>,
     activeOrderId: String?,
+    scheduledTime: String?,
+    onScheduledTimeChange: (String?) -> Unit,
     tabIndex: Int,
     onTabChanged: (Int) -> Unit,
     onAddItem: (MenuItem) -> Unit,
@@ -495,6 +501,11 @@ fun TableOrderScreen(
                 )
             }
 
+            ScheduledTimeRow(
+                scheduledTime = scheduledTime,
+                onScheduledTimeChange = onScheduledTimeChange,
+            )
+
             Button(
                 onClick = onSendOrder,
                 enabled = cart.isNotEmpty() && !isSubmitting,
@@ -519,6 +530,145 @@ fun TableOrderScreen(
                     letterSpacing = 1.sp,
                     style = MaterialTheme.typography.labelLarge,
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ScheduledTimeRow(
+    scheduledTime: String?,
+    onScheduledTimeChange: (String?) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(scheduledTime != null) }
+    val cal = remember { java.util.Calendar.getInstance() }
+    var pickerHour by remember(scheduledTime) {
+        mutableStateOf(
+            scheduledTime?.split(":")?.getOrNull(0)?.toIntOrNull()
+                ?: (cal.get(java.util.Calendar.HOUR_OF_DAY) + 1) % 24
+        )
+    }
+    var pickerMinute by remember(scheduledTime) {
+        mutableStateOf(
+            scheduledTime?.split(":")?.getOrNull(1)?.toIntOrNull()?.let { ((it + 2) / 5) * 5 % 60 } ?: 0
+        )
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        // Toggle row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(10.dp))
+                .background(Raised)
+                .border(
+                    1.dp,
+                    if (scheduledTime != null) Amber.copy(alpha = 0.5f) else Outline,
+                    RoundedCornerShape(10.dp),
+                )
+                .clickable { expanded = !expanded }
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                text = "⏱  Heure de service",
+                color = Mist,
+                style = MaterialTheme.typography.labelMedium,
+            )
+            Text(
+                text = scheduledTime ?: "Immédiat",
+                color = if (scheduledTime != null) Amber else Teal,
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.labelMedium,
+            )
+        }
+
+        // Inline picker
+        if (expanded) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Ocean)
+                    .border(1.dp, Outline, RoundedCornerShape(10.dp))
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                // Hour picker
+                IconButton(
+                    onClick = { pickerHour = (pickerHour - 1 + 24) % 24 },
+                    modifier = Modifier.size(32.dp),
+                ) {
+                    Text("−", color = Amber, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                }
+                Text(
+                    text = String.format("%02d", pickerHour),
+                    color = Pearl,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 20.sp,
+                    modifier = Modifier.width(28.dp),
+                    textAlign = TextAlign.Center,
+                )
+                IconButton(
+                    onClick = { pickerHour = (pickerHour + 1) % 24 },
+                    modifier = Modifier.size(32.dp),
+                ) {
+                    Text("+", color = Amber, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                }
+
+                Text(":", color = Pearl, fontWeight = FontWeight.Bold, fontSize = 22.sp,
+                    modifier = Modifier.padding(horizontal = 2.dp))
+
+                // Minute picker (steps of 5)
+                IconButton(
+                    onClick = { pickerMinute = (pickerMinute - 5 + 60) % 60 },
+                    modifier = Modifier.size(32.dp),
+                ) {
+                    Text("−", color = Amber, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                }
+                Text(
+                    text = String.format("%02d", pickerMinute),
+                    color = Pearl,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 20.sp,
+                    modifier = Modifier.width(28.dp),
+                    textAlign = TextAlign.Center,
+                )
+                IconButton(
+                    onClick = { pickerMinute = (pickerMinute + 5) % 60 },
+                    modifier = Modifier.size(32.dp),
+                ) {
+                    Text("+", color = Amber, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                }
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                // Clear / Confirm
+                if (scheduledTime != null) {
+                    androidx.compose.material3.TextButton(
+                        onClick = {
+                            onScheduledTimeChange(null)
+                            expanded = false
+                        },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                    ) {
+                        Text("Effacer", color = Mist, style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+                Button(
+                    onClick = {
+                        onScheduledTimeChange(String.format("%02d:%02d", pickerHour, pickerMinute))
+                        expanded = false
+                    },
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Amber, contentColor = Ocean),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                    modifier = Modifier.height(36.dp),
+                ) {
+                    Text("OK", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+                }
             }
         }
     }

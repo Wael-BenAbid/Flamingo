@@ -194,7 +194,7 @@ export default function Dashboard() {
             </div>
             <span className="text-[10px] font-bold uppercase tracking-widest text-navy/40">Aujourd'hui</span>
           </div>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-navy/40 mb-1">Revenus</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-navy/40 mb-1">Total</p>
           <p className="text-3xl font-serif font-light text-navy">
             {stats.todayRevenue.toLocaleString('fr-TN')}
             <span className="text-base ml-1.5 text-navy/40">DT</span>

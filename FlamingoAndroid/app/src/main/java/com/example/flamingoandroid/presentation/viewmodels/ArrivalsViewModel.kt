@@ -67,9 +67,15 @@ class ArrivalsViewModel(
         }
     }
 
-    fun confirmArrival(reservationId: String, positionType: String, positionNumber: String) {
+    fun confirmArrival(
+        reservationId: String,
+        positionType: String,
+        positionNumber: String,
+        adults: Int,
+        children: Int,
+    ) {
         viewModelScope.launch {
-            reservationRepo.confirmArrival(reservationId, positionType, positionNumber)
+            reservationRepo.confirmArrival(reservationId, positionType, positionNumber, adults, children)
                 .onFailure { _errorMessage.value = it.message }
         }
     }

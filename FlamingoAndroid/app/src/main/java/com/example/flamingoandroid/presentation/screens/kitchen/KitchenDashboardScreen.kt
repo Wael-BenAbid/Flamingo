@@ -406,6 +406,21 @@ private fun KitchenTicketCard(
                         color = urgencyColor,
                         fontWeight = FontWeight.SemiBold,
                     )
+                    if (!order.scheduled_time.isNullOrBlank()) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Amber.copy(alpha = 0.15f))
+                                .padding(horizontal = 8.dp, vertical = 3.dp),
+                        ) {
+                            Text(
+                                text = "⏱ ${order.scheduled_time}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Amber,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                    }
                 }
             }
 
