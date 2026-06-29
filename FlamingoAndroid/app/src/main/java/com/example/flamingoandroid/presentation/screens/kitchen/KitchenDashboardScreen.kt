@@ -4,7 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.lazy.LazyRow
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -101,12 +101,13 @@ private fun computeTotals(orders: List<TableOrder>): List<Pair<String, Int>> {
 fun KitchenDashboardScreen(
     viewModel: KitchenDashboardViewModel = viewModel(),
 ) {
-    val filteredOrders  by viewModel.filteredOrders.collectAsState()
-    val itemTotals      by viewModel.itemTotals.collectAsState()
-    val dessertPerTable by viewModel.dessertPerTable.collectAsState()
-    val pageTitle       by viewModel.pageTitle.collectAsState()
-    val isLoading       by viewModel.isLoading.collectAsState()
-    val errorMessage    by viewModel.errorMessage.collectAsState()
+    val filteredOrders      by viewModel.filteredOrders.collectAsState()
+    val itemTotals          by viewModel.itemTotals.collectAsState()
+    val dessertPerTable     by viewModel.dessertPerTable.collectAsState()
+    val servedDessertTables by viewModel.servedDessertTables.collectAsState()
+    val pageTitle           by viewModel.pageTitle.collectAsState()
+    val isLoading           by viewModel.isLoading.collectAsState()
+    val errorMessage        by viewModel.errorMessage.collectAsState()
 
     var activeTab by remember { mutableStateOf("pending") }
 
@@ -123,6 +124,12 @@ fun KitchenDashboardScreen(
 
     val pendingTotals   = remember(filteredOrders) { computeTotals(filteredOrders.filter { it.status == "pending" }) }
     val preparingTotals = remember(filteredOrders) { computeTotals(filteredOrders.filter { it.status == "preparing" }) }
+
+    val totalDesserts       = remember(dessertPerTable) { dessertPerTable.sumOf { it.count } }
+    val servedDessertsCount = remember(dessertPerTable, servedDessertTables) {
+        dessertPerTable.filter { it.table in servedDessertTables }.sumOf { it.count }
+    }
+    val remainingDesserts   = totalDesserts - servedDessertsCount
 
     Scaffold(
         topBar = {
@@ -169,6 +176,18 @@ fun KitchenDashboardScreen(
                             TotalsRow(label = "EN ATTENTE",     color = Amber, totals = pendingTotals)
                         if (preparingTotals.isNotEmpty())
                             TotalsRow(label = "EN PRÉPARATION", color = Coral, totals = preparingTotals)
+                        if (dessertPerTable.isNotEmpty()) {
+                            val dessertSummary = buildList {
+                                add("total" to totalDesserts)
+                                if (remainingDesserts > 0) add("restants" to remainingDesserts)
+                                else add("servis ✓" to totalDesserts)
+                            }
+                            TotalsRow(
+                                label  = "🍮  DESSERTS",
+                                color  = if (remainingDesserts > 0) Amber else Jade,
+                                totals = dessertSummary,
+                            )
+                        }
                     }
                     Divider(color = Outline, thickness = 1.dp)
                 }
@@ -230,79 +249,8 @@ fun KitchenDashboardScreen(
                             }
                         }
                     }
-
-                    // ── Chip dessert inline — juste après le tab "Prêtes" ───────
-                    if (dessertPerTable.isNotEmpty()) {
-                        val totalDesserts = dessertPerTable.sumOf { it.count }
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(20.dp))
-                                .background(Amber.copy(alpha = 0.12f))
-                                .border(1.dp, Amber.copy(alpha = 0.45f), RoundedCornerShape(20.dp))
-                                .padding(horizontal = 14.dp, vertical = 8.dp),
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(5.dp),
-                            ) {
-                                Text(
-                                    text = "🍮",
-                                    style = MaterialTheme.typography.labelMedium,
-                                )
-                                Text(
-                                    text = "$totalDesserts plt",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = Amber,
-                                    fontWeight = FontWeight.SemiBold,
-                                )
-                            }
-                        }
-                    }
                 }
                 Divider(color = Outline, thickness = 1.dp)
-
-                // ── Desserts par table — détail par table sous les tabs ──
-                if (dessertPerTable.isNotEmpty()) {
-                    val totalDesserts = dessertPerTable.sumOf { it.count }
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Surface)
-                            .padding(vertical = 10.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 20.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = "🍮  DESSERTS PAR TABLE",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Amber,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 1.sp,
-                            )
-                            Text(
-                                text = "$totalDesserts plat${if (totalDesserts > 1) "s" else ""} total",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Amber,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            items(dessertPerTable, key = { it.table }) { entry ->
-                                DessertChip(entry)
-                            }
-                        }
-                    }
-                    Divider(color = Outline, thickness = 1.dp)
-                }
             }
 
             // ── Error ────────────────────────────────────────────────────
@@ -326,46 +274,87 @@ fun KitchenDashboardScreen(
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = Amber)
                 }
-            } else if (visibleOrders.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize().padding(32.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            Icons.Default.CheckCircle,
-                            contentDescription = null,
-                            tint = Teal.copy(alpha = 0.5f),
-                            modifier = Modifier.size(64.dp),
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            text = "Aucune commande « ${tabs.find { it.status == activeTab }?.label ?: activeTab} »",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = Pearl,
-                            fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center,
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Les nouvelles commandes apparaîtront ici",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Mist,
-                            textAlign = TextAlign.Center,
-                        )
-                    }
-                }
             } else {
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     contentPadding = PaddingValues(16.dp),
                     modifier = Modifier.fillMaxSize(),
                 ) {
-                    items(visibleOrders, key = { it.id }) { order ->
-                        KitchenTicketCard(
-                            order = order,
-                            onSetStatus = { status -> viewModel.setStatus(order.id, status) },
-                        )
+                    // ── Desserts — toujours visibles en haut de la liste ──
+                    if (dessertPerTable.isNotEmpty()) {
+                        item(key = "dessert-header") {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = "🍮  DESSERTS PAR TABLE",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (remainingDesserts > 0) Amber else Jade,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.5.sp,
+                                )
+                                Text(
+                                    text = if (remainingDesserts > 0)
+                                        "$remainingDesserts restant${if (remainingDesserts > 1) "s" else ""}"
+                                    else "Tous servis ✓",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (remainingDesserts > 0) Amber else Jade,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                        }
+                        items(dessertPerTable, key = { "dessert-${it.table}" }) { entry ->
+                            DessertCard(
+                                entry    = entry,
+                                isServed = entry.table in servedDessertTables,
+                                onSortir = { viewModel.markDessertServed(entry.table) },
+                                onRevenir= { viewModel.unmarkDessertServed(entry.table) },
+                            )
+                        }
+                        item(key = "dessert-divider") {
+                            Divider(color = Outline.copy(alpha = 0.5f))
+                        }
+                    }
+
+                    // ── Commandes de l'onglet sélectionné ─────────────────
+                    if (visibleOrders.isEmpty()) {
+                        item(key = "orders-empty") {
+                            Column(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                Icon(
+                                    Icons.Default.CheckCircle,
+                                    contentDescription = null,
+                                    tint = Teal.copy(alpha = 0.5f),
+                                    modifier = Modifier.size(52.dp),
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text(
+                                    text = "Aucune commande « ${tabs.find { it.status == activeTab }?.label ?: activeTab} »",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = Pearl,
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = TextAlign.Center,
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = "Les nouvelles commandes apparaîtront ici",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Mist,
+                                    textAlign = TextAlign.Center,
+                                )
+                            }
+                        }
+                    } else {
+                        items(visibleOrders, key = { it.id }) { order ->
+                            KitchenTicketCard(
+                                order = order,
+                                onSetStatus = { status -> viewModel.setStatus(order.id, status) },
+                            )
+                        }
                     }
                 }
             }
@@ -616,43 +605,89 @@ private fun KitchenTicketCard(
 }
 
 @Composable
-private fun DessertChip(entry: DessertEntry) {
-    Column(
-        modifier = Modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(Raised)
-            .border(1.dp, Amber.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(3.dp),
+private fun DessertCard(
+    entry: DessertEntry,
+    isServed: Boolean,
+    onSortir: () -> Unit,
+    onRevenir: () -> Unit,
+) {
+    val borderColor = if (isServed) Jade.copy(alpha = 0.45f) else Outline
+    val bgColor     = if (isServed) Jade.copy(alpha = 0.07f) else Surface
+    val accentColor = if (isServed) Jade else Amber
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = bgColor),
+        border = androidx.compose.foundation.BorderStroke(1.dp, borderColor),
     ) {
-        Text(
-            text = entry.table,
-            color = Pearl,
-            fontWeight = FontWeight.Bold,
-            style = MaterialTheme.typography.labelMedium,
-            maxLines = 1,
-        )
-        Text(
-            text = "${entry.persons} pers.",
-            color = Mist,
-            style = MaterialTheme.typography.labelSmall,
-            fontSize = 9.sp,
-        )
-        Box(
+        Row(
             modifier = Modifier
-                .clip(CircleShape)
-                .background(Amber)
-                .padding(horizontal = 8.dp, vertical = 2.dp),
-            contentAlignment = Alignment.Center,
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = "${entry.count} plt",
-                color = Color(0xFF1A0A00),
-                fontWeight = FontWeight.Black,
-                style = MaterialTheme.typography.labelSmall,
-                fontSize = 10.sp,
-            )
+            // Table + personnes
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = entry.table,
+                    color = Pearl,
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    text = "${entry.persons} personne${if (entry.persons > 1) "s" else ""}",
+                    color = Mist,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            // Nombre de plats + bouton
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(accentColor.copy(alpha = 0.15f))
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                ) {
+                    Text(
+                        text = "${entry.count} plt${if (entry.count > 1) "s" else ""}",
+                        color = accentColor,
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
+                if (isServed) {
+                    OutlinedButton(
+                        onClick = onRevenir,
+                        modifier = Modifier.height(36.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Outline),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Mist),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                    ) {
+                        Text("← Retour", style = MaterialTheme.typography.labelSmall)
+                    }
+                } else {
+                    Button(
+                        onClick = onSortir,
+                        modifier = Modifier.height(36.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Jade),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                    ) {
+                        Text(
+                            text = "Sorti ✓",
+                            color = Color(0xFF001E0F),
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                    }
+                }
+            }
         }
     }
 }

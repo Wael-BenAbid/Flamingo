@@ -194,6 +194,17 @@ class KitchenDashboardViewModel(
             .launchIn(viewModelScope)
     }
 
+    // ── Dessert served state (in-memory per kitchen session) ─────────────
+    private val _servedDessertTables = MutableStateFlow<Set<String>>(emptySet())
+    val servedDessertTables: StateFlow<Set<String>> = _servedDessertTables.asStateFlow()
+
+    fun markDessertServed(table: String) {
+        _servedDessertTables.value = _servedDessertTables.value + table
+    }
+    fun unmarkDessertServed(table: String) {
+        _servedDessertTables.value = _servedDessertTables.value - table
+    }
+
     fun startPreparation(orderId: String) { setStatus(orderId, "preparing") }
 
     fun markReady(orderId: String) { setStatus(orderId, "ready") }
