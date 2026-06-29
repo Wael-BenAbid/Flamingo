@@ -801,7 +801,7 @@ function InvoiceDialog({
       const todayStr = format(startOfToday(), 'yyyy-MM-dd');
       const now = Timestamp.now();
 
-      // Sale records for each item → Bilans Journaliers productSalesRevenue
+      // Sale records for each item (at original prices for product tracking)
       for (const item of orderItems) {
         if (norm(item.quantity) > 0) {
           await addDoc(collection(db, 'sales'), {
@@ -819,6 +819,26 @@ function InvoiceDialog({
             createdAt:     now,
           });
         }
+      }
+
+      // Adjustment record: captures any manual order total change vs. original item prices
+      // This ensures productSalesRevenue in bilan reflects the actual amount collected
+      const orderAdjustment = customOrderTotal - computedOrderTotal;
+      if (Math.abs(orderAdjustment) > 0.009) {
+        await addDoc(collection(db, 'sales'), {
+          productName:   `Ajustement commande — ${tableLabel}`,
+          productId:     'table-adjustment',
+          quantity:      1,
+          unitSellPrice: orderAdjustment,
+          unitBuyPrice:  0,
+          totalPrice:    orderAdjustment,
+          totalCost:     0,
+          date:          todayStr,
+          source:        'table_adjustment',
+          tableLabel,
+          tableOrderId:  order?.id || '',
+          createdAt:     now,
+        });
       }
 
       // Mark order paid

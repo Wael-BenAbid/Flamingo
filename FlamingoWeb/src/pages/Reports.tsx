@@ -66,6 +66,7 @@ interface SaleRecord {
   totalCost: number;
   totalPrice: number;
   date: string;
+  source?: string; // 'table_payment' | 'walkin_payment' | 'walkin_entry' | 'table_adjustment'
 }
 
 interface PaymentRecord {
@@ -104,6 +105,8 @@ interface TableOrder {
   server_name?: string;
   source?: string;
   created_at?: any;
+  customAdultPrice?: number;  // actual price paid per adult (may differ from position catalog)
+  customChildPrice?: number;  // actual price paid per child
 }
 
 interface Worker {
@@ -228,33 +231,14 @@ export default function Reports() {
   const workerMap = useMemo(() => new Map(workers.map((w) => [w.id, w.fullName])), [workers]);
 
   const report = useMemo(() => {
+    const safeNum = (v: unknown) => Math.max(0, Number(v) || 0);
+
     const dayReservations          = reservations.filter((r) => r.date === selectedDate);
     const dayConfirmedReservations = dayReservations.filter((r) =>
       ['confirmed', 'checked-in'].includes(r.status));
     const positionMap = new Map(positions.map((p) => [normalizeKey(p.type), p]));
 
-    const reservationRevenue = dayConfirmedReservations.reduce((sum, r) => {
-      if (typeof r.totalPrice === 'number' && r.totalPrice > 0) return sum + r.totalPrice;
-      const pos = positionMap.get(normalizeKey(r.positionType || ''));
-      const ap = pos?.price ?? 0;
-      const cp = pos?.childPrice ?? Math.round(ap * 0.5);
-      return sum + r.adults * ap + r.children * cp;
-    }, 0);
-
-    const daySales           = sales.filter((s) => s.date === selectedDate);
-    const dayAdvances        = advances.filter((a) => a.date === selectedDate);
-    const dayPayments        = payments.filter((p) => p.date === selectedDate);
-    const dayPenalties       = penalties.filter((p) => p.date === selectedDate);
-
-    // Revenues from sales records — safe Number() coercion to avoid NaN
-    const safeNum = (v: unknown) => Math.max(0, Number(v) || 0);
-    const productSalesRevenue = daySales.reduce((s, x) => s + safeNum(x.totalPrice || safeNum(x.quantity) * safeNum(x.unitSellPrice)), 0);
-    const productCost         = daySales.reduce((s, x) => s + safeNum(x.totalCost  || safeNum(x.quantity) * safeNum(x.unitBuyPrice)),  0);
-    const workerAdvancesTotal = dayAdvances.reduce((s, x) => s + safeNum(x.amount), 0);
-    const workerPaymentsTotal = dayPayments.reduce((s, x) => s + safeNum(x.amount), 0);
-    const workerPenalties     = dayPenalties.reduce((s, x) => s + safeNum(x.amount), 0);
-    const totalClients        = dayConfirmedReservations.reduce((s, r) => s + r.adults + r.children, 0);
-
+    // ── Table orders for the day ───────────────────────────────────────────────
     const dayTableOrders = tableOrders.filter((o) => {
       if (!o.created_at || o.status === 'cancelled') return false;
       try {
@@ -263,16 +247,77 @@ export default function Reports() {
       } catch { return false; }
     });
 
-    // Discounts effectively given on paid table orders (reduces real revenue vs. gross)
+    // Map table_number → paid order (to read actual custom adult/child prices)
+    const paidOrderByTable = new Map<string, TableOrder>();
+    dayTableOrders.filter((o) => o.status === 'paid').forEach((o) => {
+      if (o.table_number) paidOrderByTable.set(o.table_number, o);
+    });
+
+    // ── Reservation entry fee revenue ─────────────────────────────────────────
+    // For paid tables: use customAdultPrice/customChildPrice if available
+    // For unpaid: use totalPrice or catalog price (estimated)
+    const reservationRevenue = dayConfirmedReservations.reduce((sum, r) => {
+      const tableLabel = `${r.positionType?.trim() ?? ''} ${r.positionNumber?.trim() ?? ''}`.trim();
+      const paidOrder  = paidOrderByTable.get(tableLabel);
+      if (paidOrder && paidOrder.customAdultPrice !== undefined) {
+        const ap = safeNum(paidOrder.customAdultPrice);
+        const cp = paidOrder.customChildPrice !== undefined
+          ? safeNum(paidOrder.customChildPrice)
+          : Math.round(ap * 0.5);
+        return sum + r.adults * ap + r.children * cp;
+      }
+      if (typeof r.totalPrice === 'number' && r.totalPrice > 0) return sum + r.totalPrice;
+      const pos = positionMap.get(normalizeKey(r.positionType || ''));
+      const ap  = pos?.price ?? 0;
+      const cp  = pos?.childPrice ?? Math.round(ap * 0.5);
+      return sum + r.adults * ap + r.children * cp;
+    }, 0);
+
+    const daySales    = sales.filter((s) => s.date === selectedDate);
+    const dayAdvances = advances.filter((a) => a.date === selectedDate);
+    const dayPayments = payments.filter((p) => p.date === selectedDate);
+    const dayPenalties= penalties.filter((p) => p.date === selectedDate);
+
+    // ── Sales revenue — split by source ──────────────────────────────────────
+    const saleRevenue = (x: SaleRecord) => safeNum(x.totalPrice || safeNum(x.quantity) * safeNum(x.unitSellPrice));
+    // Walk-in entry fees (source = 'walkin_entry') → "Revenus entrées walk-in"
+    const walkInEntryRevenue = daySales
+      .filter((x) => x.source === 'walkin_entry')
+      .reduce((s, x) => s + saleRevenue(x), 0);
+    // Product/food/drink items + adjustments (all other sources)
+    const productSalesRevenue = daySales
+      .filter((x) => x.source !== 'walkin_entry')
+      .reduce((s, x) => s + saleRevenue(x), 0);
+    const productCost = daySales.reduce((s, x) => s + safeNum(x.totalCost || safeNum(x.quantity) * safeNum(x.unitBuyPrice)), 0);
+
+    const workerAdvancesTotal = dayAdvances.reduce((s, x) => s + safeNum(x.amount), 0);
+    const workerPaymentsTotal = dayPayments.reduce((s, x) => s + safeNum(x.amount), 0);
+    const workerPenalties     = dayPenalties.reduce((s, x) => s + safeNum(x.amount), 0);
+    const totalClients        = dayConfirmedReservations.reduce((s, r) => s + r.adults + r.children, 0);
+
+    // ── Total discounts / adjustments given on paid table orders ─────────────
+    // Compare catalog gross (reservation entry at catalog price + original order items)
+    // vs. grandTotal (actual net amount paid including custom prices and discounts)
     const totalDiscountsGiven = dayTableOrders
-      .filter((o) => o.status === 'paid' && (o.discountPercent ?? 0) > 0)
+      .filter((o) => o.status === 'paid' && safeNum(o.grandTotal) > 0)
       .reduce((s, o) => {
-        const gross = safeNum(o.total_price);
-        const net   = safeNum(o.grandTotal ?? o.total_price);
-        return s + Math.max(0, gross - net);
+        if (!o.table_number) return s;
+        // Find confirmed reservation for this table to get catalog entry fee
+        const tableLabel = o.table_number;
+        const res = dayConfirmedReservations.find((r) =>
+          `${r.positionType?.trim() ?? ''} ${r.positionNumber?.trim() ?? ''}`.trim() === tableLabel
+        );
+        const pos = res ? positionMap.get(normalizeKey(res.positionType || '')) : null;
+        const catalogAp = pos?.price ?? 0;
+        const catalogCp = pos?.childPrice ?? Math.round(catalogAp * 0.5);
+        const catalogEntry = res ? (res.adults * catalogAp + res.children * catalogCp) : 0;
+        const catalogOrder = safeNum(o.total_price); // original items total
+        const grossTotal   = catalogEntry + catalogOrder;
+        const netTotal     = safeNum(o.grandTotal);
+        return s + Math.max(0, grossTotal - netTotal);
       }, 0);
 
-    const totalRevenue  = reservationRevenue + productSalesRevenue - totalDiscountsGiven;
+    const totalRevenue  = reservationRevenue + walkInEntryRevenue + productSalesRevenue - totalDiscountsGiven;
     const totalExpenses = workerAdvancesTotal + workerPaymentsTotal + productCost;
     const netProfit     = totalRevenue - totalExpenses;
 
@@ -292,7 +337,7 @@ export default function Reports() {
     return {
       dayReservations, dayConfirmedReservations,
       daySales, dayAdvances, dayPayments, dayPenalties, dayTableOrders,
-      totalClients, reservationRevenue,
+      totalClients, reservationRevenue, walkInEntryRevenue,
       productSalesRevenue, productCost,
       totalDiscountsGiven,
       workerAdvancesTotal, workerPaymentsTotal, workerPenalties,
@@ -395,9 +440,11 @@ export default function Reports() {
     // ── RÉSUMÉ FINANCIER ─────────────────────────────────────────────────────
     sectionHeader('RÉSUMÉ FINANCIER');
     row('Revenus entrées (réservations)',  fmtDt(report.reservationRevenue));
+    if (report.walkInEntryRevenue > 0)
+      row('Revenus entrées (walk-in)',    fmtDt(report.walkInEntryRevenue));
     row('Revenus produits & boissons',    fmtDt(report.productSalesRevenue));
     if (report.totalDiscountsGiven > 0)
-      row('Remises accordées (déduites)', `− ${fmtDt(report.totalDiscountsGiven)}`, false, [200,100,0]);
+      row('Remises & ajustements (déduits)', `− ${fmtDt(report.totalDiscountsGiven)}`, false, [200,100,0]);
     row('Coût produits vendus',           fmtDt(report.productCost), false, [200,50,50]);
     row('Avances travailleurs',     fmtDt(report.workerAdvancesTotal), false, [200,50,50]);
     row('Paiements travailleurs',   fmtDt(report.workerPaymentsTotal), false, [200,50,50]);
@@ -910,8 +957,9 @@ export default function Reports() {
       ['── REVENUS ──'],
       ['Revenus totaux NET (DT)', report.totalRevenue],
       ['  Entrées réservations (DT)', report.reservationRevenue],
+      ['  Entrées walk-in (DT)', report.walkInEntryRevenue],
       ['  Produits & boissons (DT)', report.productSalesRevenue],
-      ['  Remises accordées (DT)', -report.totalDiscountsGiven],
+      ['  Remises & ajustements (DT)', -report.totalDiscountsGiven],
       [],
       ['── DÉPENSES ──'],
       ['Dépenses totales (DT)', report.totalExpenses],

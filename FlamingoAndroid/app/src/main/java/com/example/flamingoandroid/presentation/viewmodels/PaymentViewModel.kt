@@ -122,6 +122,28 @@ class PaymentViewModel(
                     }
                 }
 
+                // 1b — adjustment record when order total was manually changed
+                val computedOrderTotal = order?.items?.sumOf { it.unit_price * it.quantity } ?: 0.0
+                val orderAdjustment = adjustedOrderTotal - computedOrderTotal
+                if (order != null && Math.abs(orderAdjustment) > 0.009) {
+                    db.collection("sales").add(
+                        mapOf(
+                            "productName"   to "Ajustement commande ($tableLabel)",
+                            "productId"     to "table-adjustment",
+                            "quantity"      to 1,
+                            "unitSellPrice" to orderAdjustment,
+                            "unitBuyPrice"  to 0.0,
+                            "totalPrice"    to orderAdjustment,
+                            "totalCost"     to 0.0,
+                            "date"          to todayStr,
+                            "source"        to "table_adjustment",
+                            "tableLabel"    to tableLabel,
+                            "tableOrderId"  to order.id,
+                            "createdAt"     to now,
+                        )
+                    ).await()
+                }
+
                 // 2 — mark table_order paid
                 order?.id?.takeIf { it.isNotBlank() }?.let { orderId ->
                     db.collection("table_orders").document(orderId).update(
