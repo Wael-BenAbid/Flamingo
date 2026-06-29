@@ -230,10 +230,38 @@ fun KitchenDashboardScreen(
                             }
                         }
                     }
+
+                    // ── Chip dessert inline — juste après le tab "Prêtes" ───────
+                    if (dessertPerTable.isNotEmpty()) {
+                        val totalDesserts = dessertPerTable.sumOf { it.count }
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(Amber.copy(alpha = 0.12f))
+                                .border(1.dp, Amber.copy(alpha = 0.45f), RoundedCornerShape(20.dp))
+                                .padding(horizontal = 14.dp, vertical = 8.dp),
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                            ) {
+                                Text(
+                                    text = "🍮",
+                                    style = MaterialTheme.typography.labelMedium,
+                                )
+                                Text(
+                                    text = "$totalDesserts plt",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = Amber,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                            }
+                        }
+                    }
                 }
                 Divider(color = Outline, thickness = 1.dp)
 
-                // ── Desserts par table — affiché après le tab "Prêtes" ──
+                // ── Desserts par table — détail par table sous les tabs ──
                 if (dessertPerTable.isNotEmpty()) {
                     val totalDesserts = dessertPerTable.sumOf { it.count }
                     Column(
