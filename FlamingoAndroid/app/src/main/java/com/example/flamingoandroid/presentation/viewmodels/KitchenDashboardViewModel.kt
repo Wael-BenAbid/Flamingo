@@ -161,13 +161,14 @@ class KitchenDashboardViewModel(
         }
 
         // Subscribe to today's confirmed reservations for dessert calculation
-        viewModelScope.launch {
-            reservationRepo.observeTodayAllArrivals().collect { arrivals ->
+        reservationRepo.observeTodayAllArrivals()
+            .onEach { arrivals ->
                 _todayReservations.value = arrivals.filter {
                     it.status.equals("confirmed", ignoreCase = true)
                 }
             }
-        }
+            .catch { /* flow error: skip, dessert section will stay empty */ }
+            .launchIn(viewModelScope)
 
         viewModelScope.launch {
             val user = FirebaseAuth.getInstance().currentUser

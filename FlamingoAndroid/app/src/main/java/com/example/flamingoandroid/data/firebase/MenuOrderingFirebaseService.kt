@@ -161,18 +161,32 @@ class MenuOrderingFirebaseService {
     }
 
     suspend fun upsertCategory(category: MenuCategory): Result<Unit> = try {
-        val payload = mapOf(
-            "name" to category.name,
-            "display_order" to category.display_order,
-            "available" to true,
-            "target_role" to category.target_role,
-            "updatedAt" to Timestamp.now(),
-            "createdAt" to Timestamp.now(),
-        )
+        val now = Timestamp.now()
         if (category.id.isBlank()) {
-            db.collection("menu_categories").add(payload).await()
+            // CREATE: include createdAt
+            db.collection("menu_categories").add(
+                mapOf(
+                    "name"          to category.name,
+                    "display_order" to category.display_order,
+                    "available"     to true,
+                    "target_role"   to category.target_role,
+                    "createdAt"     to now,
+                    "updatedAt"     to now,
+                )
+            ).await()
         } else {
-            db.collection("menu_categories").document(category.id).set(payload).await()
+            // UPDATE: only updatedAt, preserve createdAt via merge
+            db.collection("menu_categories").document(category.id)
+                .set(
+                    mapOf(
+                        "name"          to category.name,
+                        "display_order" to category.display_order,
+                        "available"     to true,
+                        "target_role"   to category.target_role,
+                        "updatedAt"     to now,
+                    ),
+                    com.google.firebase.firestore.SetOptions.merge()
+                ).await()
         }
         Result.success(Unit)
     } catch (error: Exception) {
@@ -187,19 +201,22 @@ class MenuOrderingFirebaseService {
     }
 
     suspend fun upsertMenuItem(item: MenuItem): Result<Unit> = try {
-        val payload = mapOf(
-            "name" to item.name,
-            "category_id" to item.category_id,
-            "price" to item.price,
+        val now = Timestamp.now()
+        val core = mapOf(
+            "name"         to item.name,
+            "category_id"  to item.category_id,
+            "price"        to item.price,
             "is_available" to item.is_available,
-            "available" to item.is_available,
-            "updatedAt" to Timestamp.now(),
-            "createdAt" to Timestamp.now(),
+            "available"    to item.is_available,
+            "updatedAt"    to now,
         )
         if (item.id.isBlank()) {
-            db.collection("menu_items").add(payload).await()
+            // CREATE: include createdAt
+            db.collection("menu_items").add(core + mapOf("createdAt" to now)).await()
         } else {
-            db.collection("menu_items").document(item.id).set(payload).await()
+            // UPDATE: merge so createdAt and extra fields are preserved
+            db.collection("menu_items").document(item.id)
+                .set(core, com.google.firebase.firestore.SetOptions.merge()).await()
         }
         Result.success(Unit)
     } catch (error: Exception) {

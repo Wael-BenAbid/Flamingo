@@ -246,15 +246,14 @@ export default function Reports() {
     const dayPayments        = payments.filter((p) => p.date === selectedDate);
     const dayPenalties       = penalties.filter((p) => p.date === selectedDate);
 
-    const productSalesRevenue = daySales.reduce((s, x) => s + (x.totalPrice || x.quantity * x.unitSellPrice), 0);
-    const productCost         = daySales.reduce((s, x) => s + (x.totalCost  || x.quantity * x.unitBuyPrice),  0);
-    const workerAdvancesTotal = dayAdvances.reduce((s, x) => s + x.amount, 0);
-    const workerPaymentsTotal = dayPayments.reduce((s, x) => s + x.amount, 0);
-    const workerPenalties     = dayPenalties.reduce((s, x) => s + x.amount, 0);
+    // Revenues from sales records — safe Number() coercion to avoid NaN
+    const safeNum = (v: unknown) => Math.max(0, Number(v) || 0);
+    const productSalesRevenue = daySales.reduce((s, x) => s + safeNum(x.totalPrice || safeNum(x.quantity) * safeNum(x.unitSellPrice)), 0);
+    const productCost         = daySales.reduce((s, x) => s + safeNum(x.totalCost  || safeNum(x.quantity) * safeNum(x.unitBuyPrice)),  0);
+    const workerAdvancesTotal = dayAdvances.reduce((s, x) => s + safeNum(x.amount), 0);
+    const workerPaymentsTotal = dayPayments.reduce((s, x) => s + safeNum(x.amount), 0);
+    const workerPenalties     = dayPenalties.reduce((s, x) => s + safeNum(x.amount), 0);
     const totalClients        = dayConfirmedReservations.reduce((s, r) => s + r.adults + r.children, 0);
-    const totalRevenue        = reservationRevenue + productSalesRevenue;
-    const totalExpenses       = workerAdvancesTotal + workerPaymentsTotal + productCost;
-    const netProfit           = totalRevenue - totalExpenses;
 
     const dayTableOrders = tableOrders.filter((o) => {
       if (!o.created_at || o.status === 'cancelled') return false;
@@ -263,6 +262,19 @@ export default function Reports() {
         return d ? format(d, 'yyyy-MM-dd') === selectedDate : false;
       } catch { return false; }
     });
+
+    // Discounts effectively given on paid table orders (reduces real revenue vs. gross)
+    const totalDiscountsGiven = dayTableOrders
+      .filter((o) => o.status === 'paid' && (o.discountPercent ?? 0) > 0)
+      .reduce((s, o) => {
+        const gross = safeNum(o.total_price);
+        const net   = safeNum(o.grandTotal ?? o.total_price);
+        return s + Math.max(0, gross - net);
+      }, 0);
+
+    const totalRevenue  = reservationRevenue + productSalesRevenue - totalDiscountsGiven;
+    const totalExpenses = workerAdvancesTotal + workerPaymentsTotal + productCost;
+    const netProfit     = totalRevenue - totalExpenses;
 
     // Comptage des poissons — tous les articles dont le nom contient "poisson"
     const fishMap = new Map<string, number>();
@@ -282,10 +294,11 @@ export default function Reports() {
       daySales, dayAdvances, dayPayments, dayPenalties, dayTableOrders,
       totalClients, reservationRevenue,
       productSalesRevenue, productCost,
+      totalDiscountsGiven,
       workerAdvancesTotal, workerPaymentsTotal, workerPenalties,
       totalRevenue, totalExpenses, netProfit,
       totalProductUnitsSold: daySales.reduce((s, x) => s + x.quantity, 0),
-      stockValue: inventory.reduce((s, i) => s + (i.buyPrice || 0) * (i.stockQuantity ?? i.quantity ?? 0), 0),
+      stockValue: inventory.reduce((s, i) => safeNum(i.buyPrice) * (i.stockQuantity ?? i.quantity ?? 0), 0),
       totalFishSold,
       fishBreakdown,
     };
@@ -381,9 +394,11 @@ export default function Reports() {
 
     // ── RÉSUMÉ FINANCIER ─────────────────────────────────────────────────────
     sectionHeader('RÉSUMÉ FINANCIER');
-    row('Revenus réservations',     fmtDt(report.reservationRevenue));
-    row('Revenus commandes tables', fmtDt(report.productSalesRevenue));
-    row('Coût produits vendus',     fmtDt(report.productCost), false, [200,50,50]);
+    row('Revenus entrées (réservations)',  fmtDt(report.reservationRevenue));
+    row('Revenus produits & boissons',    fmtDt(report.productSalesRevenue));
+    if (report.totalDiscountsGiven > 0)
+      row('Remises accordées (déduites)', `− ${fmtDt(report.totalDiscountsGiven)}`, false, [200,100,0]);
+    row('Coût produits vendus',           fmtDt(report.productCost), false, [200,50,50]);
     row('Avances travailleurs',     fmtDt(report.workerAdvancesTotal), false, [200,50,50]);
     row('Paiements travailleurs',   fmtDt(report.workerPaymentsTotal), false, [200,50,50]);
     y += 2;
@@ -893,9 +908,10 @@ export default function Reports() {
       ['Généré le', format(new Date(), 'dd/MM/yyyy HH:mm', { locale: fr })],
       [],
       ['── REVENUS ──'],
-      ['Revenus totaux (DT)', report.totalRevenue],
-      ['  Réservations (DT)', report.reservationRevenue],
-      ['  Commandes tables (DT)', report.productSalesRevenue],
+      ['Revenus totaux NET (DT)', report.totalRevenue],
+      ['  Entrées réservations (DT)', report.reservationRevenue],
+      ['  Produits & boissons (DT)', report.productSalesRevenue],
+      ['  Remises accordées (DT)', -report.totalDiscountsGiven],
       [],
       ['── DÉPENSES ──'],
       ['Dépenses totales (DT)', report.totalExpenses],

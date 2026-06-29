@@ -481,7 +481,7 @@ private fun InvoiceDialog(
     val reservationTotal = adultUnitPrice * adults + childUnitPrice * children
     val orderTotal       = customOrderTotal
     val subtotal         = reservationTotal + orderTotal
-    val discountAmt      = Math.round(subtotal * discountPct) / 100.0
+    val discountAmt      = Math.round(subtotal * discountPct / 100.0 * 100.0) / 100.0
     val finalTotal       = subtotal - discountAmt
 
     val clientName = when {
@@ -1042,7 +1042,7 @@ private fun WalkInDialog(
     val reservationTotal = adultPrice * adults + childPrice * children
     val orderTotal       = cartItems.sumOf { it.unit_price * it.quantity }
     val subtotal         = reservationTotal + orderTotal
-    val discountAmt      = Math.round(subtotal * discountPct) / 100.0
+    val discountAmt      = Math.round(subtotal * discountPct / 100.0 * 100.0) / 100.0
     val finalTotal       = subtotal - discountAmt
 
     Dialog(
