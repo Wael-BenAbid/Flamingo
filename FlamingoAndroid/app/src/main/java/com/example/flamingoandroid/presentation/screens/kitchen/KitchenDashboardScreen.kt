@@ -75,6 +75,7 @@ private val Teal    = Color(0xFF2EC4B6)
 private val Pearl   = Color(0xFFF0EEE8)
 private val Mist    = Color(0xFF9DB4C0)
 private val Crimson = Color(0xFFE63946)
+private val Jade    = Color(0xFF2DC653)
 
 private data class TabDef(val status: String, val label: String, val color: Color)
 private val tabs = listOf(
