@@ -13,7 +13,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
@@ -556,8 +559,9 @@ private fun InvoiceDialog(
                                 total    = customAdultPrice * adults,
                                 accent   = Teal,
                                 enabled  = !isPaid,
-                                onDecrease = { customAdultPrice = maxOf(0.0, customAdultPrice - 0.5) },
-                                onIncrease = { customAdultPrice += 0.5 },
+                                onDecrease    = { customAdultPrice = maxOf(0.0, customAdultPrice - 0.5) },
+                                onIncrease    = { customAdultPrice += 0.5 },
+                                onPriceChange = { customAdultPrice = it },
                             )
                         }
                         if (children > 0) {
@@ -567,8 +571,9 @@ private fun InvoiceDialog(
                                 total    = customChildPrice * children,
                                 accent   = Amber,
                                 enabled  = !isPaid,
-                                onDecrease = { customChildPrice = maxOf(0.0, customChildPrice - 0.5) },
-                                onIncrease = { customChildPrice += 0.5 },
+                                onDecrease    = { customChildPrice = maxOf(0.0, customChildPrice - 0.5) },
+                                onIncrease    = { customChildPrice += 0.5 },
+                                onPriceChange = { customChildPrice = it },
                             )
                         }
                         if (adults == 0 && children == 0) {
@@ -603,8 +608,9 @@ private fun InvoiceDialog(
                         total    = customOrderTotal,
                         accent   = Pearl,
                         enabled  = !isPaid,
-                        onDecrease = { customOrderTotal = maxOf(0.0, customOrderTotal - 0.5) },
-                        onIncrease = { customOrderTotal += 0.5 },
+                        onDecrease    = { customOrderTotal = maxOf(0.0, customOrderTotal - 0.5) },
+                        onIncrease    = { customOrderTotal += 0.5 },
+                        onPriceChange = { customOrderTotal = it },
                         showReset = computedOrderTotal != customOrderTotal && !isPaid,
                         onReset   = { customOrderTotal = computedOrderTotal },
                     )
@@ -1536,7 +1542,7 @@ private fun OrderItemRow(item: TableOrderItem) {
 // Padding extension shorthand
 private fun Modifier.paddingEnd(dp: androidx.compose.ui.unit.Dp) = this.padding(end = dp)
 
-// ── Editable price row (+/- stepper) ─────────────────────────────────────────
+// ── Editable price row (+/- stepper + direct numeric input) ──────────────────
 @Composable
 private fun EditablePriceRow(
     label: String,
@@ -1546,9 +1552,15 @@ private fun EditablePriceRow(
     enabled: Boolean,
     onDecrease: () -> Unit,
     onIncrease: () -> Unit,
+    onPriceChange: (Double) -> Unit = {},
     showReset: Boolean = false,
     onReset: () -> Unit = {},
 ) {
+    // Local text state tied to price — resets when price changes from +/- buttons
+    var priceText by remember(price) {
+        mutableStateOf(String.format(Locale.US, "%.2f", price))
+    }
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -1570,14 +1582,38 @@ private fun EditablePriceRow(
                 Text("−", color = if (enabled && price > 0) Amber else Outline,
                     fontWeight = FontWeight.Bold, fontSize = 15.sp)
             }
-            Text(
-                text = fmtDt(price),
-                color = accent,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace,
-                style = MaterialTheme.typography.labelMedium,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.widthIn(min = 72.dp),
+            // Direct numeric input — tap to type, opens decimal keyboard
+            BasicTextField(
+                value = priceText,
+                onValueChange = { new ->
+                    priceText = new
+                    // Accept both '.' and ',' as decimal separator
+                    new.replace(',', '.').toDoubleOrNull()?.coerceAtLeast(0.0)?.let { v ->
+                        onPriceChange(v)
+                    }
+                },
+                enabled = enabled,
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                textStyle = MaterialTheme.typography.labelMedium.copy(
+                    color = accent,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    textAlign = TextAlign.Center,
+                ),
+                decorationBox = { innerTextField ->
+                    Box(
+                        modifier = Modifier
+                            .widthIn(min = 74.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(if (enabled) Raised else Raised.copy(alpha = 0.5f))
+                            .border(1.dp,
+                                if (enabled) accent.copy(alpha = 0.4f) else Outline,
+                                RoundedCornerShape(6.dp))
+                            .padding(horizontal = 8.dp, vertical = 5.dp),
+                        contentAlignment = Alignment.Center,
+                    ) { innerTextField() }
+                },
             )
             TextButton(
                 onClick = onIncrease,

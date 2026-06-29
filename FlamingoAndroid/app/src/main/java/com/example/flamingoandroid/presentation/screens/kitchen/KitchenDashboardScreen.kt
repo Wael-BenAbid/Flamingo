@@ -173,49 +173,6 @@ fun KitchenDashboardScreen(
                     Divider(color = Outline, thickness = 1.dp)
                 }
 
-                // ── Desserts par table ───────────────────────────────────
-                if (dessertPerTable.isNotEmpty()) {
-                    val totalDesserts = dessertPerTable.sumOf { it.count }
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Surface)
-                            .padding(vertical = 10.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 20.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = "DESSERTS PAR TABLE",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Amber,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 1.sp,
-                            )
-                            Text(
-                                text = "$totalDesserts plat${if (totalDesserts > 1) "s" else ""} total",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Amber,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            items(dessertPerTable, key = { it.table }) { entry ->
-                                DessertChip(entry)
-                            }
-                        }
-                    }
-                    Divider(color = Outline, thickness = 1.dp)
-                }
-
                 // ── Status tabs ──────────────────────────────────────────
                 Row(
                     modifier = Modifier
@@ -275,6 +232,49 @@ fun KitchenDashboardScreen(
                     }
                 }
                 Divider(color = Outline, thickness = 1.dp)
+
+                // ── Desserts par table — affiché après le tab "Prêtes" ──
+                if (dessertPerTable.isNotEmpty()) {
+                    val totalDesserts = dessertPerTable.sumOf { it.count }
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Surface)
+                            .padding(vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = "🍮  DESSERTS PAR TABLE",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Amber,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp,
+                            )
+                            Text(
+                                text = "$totalDesserts plat${if (totalDesserts > 1) "s" else ""} total",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Amber,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            items(dessertPerTable, key = { it.table }) { entry ->
+                                DessertChip(entry)
+                            }
+                        }
+                    }
+                    Divider(color = Outline, thickness = 1.dp)
+                }
             }
 
             // ── Error ────────────────────────────────────────────────────
