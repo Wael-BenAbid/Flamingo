@@ -192,7 +192,7 @@ fun PaymentScreen(
             userRole    = state.userRole,
             onDismiss   = { invoiceTable = null },
             onPay       = { discountPct, discountAmt, finalTotal, remarque,
-                            custAdultPx, custChildPx, custOrdTotal ->
+                            custAdultPx, custChildPx, custOrdTotal, adjustedItems ->
                 viewModel.payTable(
                     tableLabel         = tableLabel,
                     reservation        = reservation,
@@ -204,6 +204,7 @@ fun PaymentScreen(
                     customAdultPrice   = custAdultPx,
                     customChildPrice   = custChildPx,
                     adjustedOrderTotal = custOrdTotal,
+                    adjustedItems      = adjustedItems,
                 )
             },
             onCancelPayment = {
@@ -460,12 +461,13 @@ private fun InvoiceDialog(
     onDismiss: () -> Unit,
     userRole: String = "",
     onPay: (discountPct: Int, discountAmt: Double, finalTotal: Double, remarque: String,
-             customAdultPrice: Double, customChildPrice: Double, customOrderTotal: Double) -> Unit,
+             customAdultPrice: Double, customChildPrice: Double, orderTotal: Double,
+             adjustedItems: List<TableOrderItem>) -> Unit,
     onCancelPayment: () -> Unit = {},
 ) {
     val context = LocalContext.current
 
-    // Compute initial order total before state (used for initialising customOrderTotal)
+    // Compute initial order total before state (used to initialise per-item custom prices)
     val orderItems         = order?.items ?: emptyList()
     val computedOrderTotal = orderItems.sumOf { it.unit_price * it.quantity }
 
@@ -477,7 +479,10 @@ private fun InvoiceDialog(
     var isPaying         by remember { mutableStateOf(false) }
     var customAdultPrice by remember { mutableStateOf(defaultAdultPrice) }
     var customChildPrice by remember { mutableStateOf(defaultChildPrice) }
-    var customOrderTotal by remember { mutableStateOf(computedOrderTotal) }
+    // Prix éditable par article — un prix unitaire par ligne de commande
+    var customItemPrices by remember(orderItems) {
+        mutableStateOf(orderItems.map { it.unit_price })
+    }
 
     val adultUnitPrice = customAdultPrice
     val childUnitPrice = customChildPrice
@@ -488,7 +493,9 @@ private fun InvoiceDialog(
     val children = reservation?.children ?: (if (isWalkIn) (order?.children ?: 0) else 0)
 
     val reservationTotal = adultUnitPrice * adults + childUnitPrice * children
-    val orderTotal       = customOrderTotal
+    val orderTotal = orderItems.indices.sumOf { i ->
+        (customItemPrices.getOrElse(i) { orderItems[i].unit_price }) * orderItems[i].quantity
+    }
     val subtotal         = reservationTotal + orderTotal
     val discountAmt      = Math.round(subtotal * discountPct / 100.0 * 100.0) / 100.0
     val finalTotal       = subtotal - discountAmt
@@ -592,34 +599,38 @@ private fun InvoiceDialog(
 
                     HorizontalDivider(color = Outline)
 
-                    // Commande
+                    // Commande — prix éditable PAR ARTICLE
                     SectionTitle("CONSOMMATION — Extra / Boissons")
                     if (orderItems.isNotEmpty()) {
-                        orderItems.forEach { item -> OrderItemRow(item) }
-                        if (computedOrderTotal != customOrderTotal) {
-                            InvoiceRow(
-                                "Calculé",
-                                fmtDt(computedOrderTotal),
-                                valueColor = Outline,
+                        orderItems.forEachIndexed { index, item ->
+                            EditableOrderItemRow(
+                                item = item,
+                                customPrice = customItemPrices.getOrElse(index) { item.unit_price },
+                                enabled = !isPaid,
+                                onPriceChange = { newPrice ->
+                                    val updated = customItemPrices.toMutableList()
+                                    while (updated.size <= index) updated.add(item.unit_price)
+                                    updated[index] = newPrice
+                                    customItemPrices = updated
+                                },
+                                onReset = {
+                                    val updated = customItemPrices.toMutableList()
+                                    while (updated.size <= index) updated.add(item.unit_price)
+                                    updated[index] = item.unit_price
+                                    customItemPrices = updated
+                                },
                             )
                         }
+                        HorizontalDivider(color = Outline.copy(alpha = 0.5f))
+                        InvoiceRow(
+                            "Total consommation",
+                            fmtDt(orderTotal),
+                            valueColor = if (orderTotal != computedOrderTotal) Crimson else Pearl,
+                        )
                     } else {
-                        Text("Aucun article — ajustez le total si nécessaire.", color = Mist,
+                        Text("Aucun article dans cette commande.", color = Mist,
                             style = MaterialTheme.typography.bodySmall)
                     }
-                    // Editable order total
-                    EditablePriceRow(
-                        label    = "Total consommation",
-                        price    = customOrderTotal,
-                        total    = customOrderTotal,
-                        accent   = Pearl,
-                        enabled  = !isPaid,
-                        onDecrease    = { customOrderTotal = maxOf(0.0, customOrderTotal - 0.5) },
-                        onIncrease    = { customOrderTotal += 0.5 },
-                        onPriceChange = { customOrderTotal = it },
-                        showReset = computedOrderTotal != customOrderTotal && !isPaid,
-                        onReset   = { customOrderTotal = computedOrderTotal },
-                    )
 
                     HorizontalDivider(color = Outline)
 
@@ -753,6 +764,9 @@ private fun InvoiceDialog(
                     // Print button
                     OutlinedButton(
                         onClick = {
+                            val adjustedItems = orderItems.mapIndexed { i, item ->
+                                item.copy(unit_price = customItemPrices.getOrElse(i) { item.unit_price })
+                            }
                             val html = buildReceiptHtml(
                                 tableLabel      = tableLabel,
                                 clientName      = clientName,
@@ -762,7 +776,7 @@ private fun InvoiceDialog(
                                 adultUnitPrice  = adultUnitPrice,
                                 childUnitPrice  = childUnitPrice,
                                 reservationTotal= reservationTotal,
-                                orderItems      = orderItems,
+                                orderItems      = adjustedItems,
                                 orderTotal      = orderTotal,
                                 subtotal        = subtotal,
                                 discountPercent = discountPct,
@@ -786,8 +800,11 @@ private fun InvoiceDialog(
                         onClick = {
                             if (!isPaid && !isPaying) {
                                 isPaying = true
+                                val adjustedItems = orderItems.mapIndexed { i, item ->
+                                    item.copy(unit_price = customItemPrices.getOrElse(i) { item.unit_price })
+                                }
                                 onPay(discountPct, discountAmt, finalTotal, remarque,
-                                      customAdultPrice, customChildPrice, customOrderTotal)
+                                      customAdultPrice, customChildPrice, orderTotal, adjustedItems)
                             }
                         },
                         enabled = !isPaid && !isPaying,
@@ -1532,35 +1549,120 @@ private fun InvoiceRow(
     }
 }
 
+// ── Ligne de commande avec prix unitaire éditable (steppers + saisie clavier) ──
 @Composable
-private fun OrderItemRow(item: TableOrderItem) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
+private fun EditableOrderItemRow(
+    item: TableOrderItem,
+    customPrice: Double,
+    enabled: Boolean,
+    onPriceChange: (Double) -> Unit,
+    onReset: () -> Unit,
+) {
+    var priceText by remember(customPrice) {
+        mutableStateOf(String.format(Locale.US, "%.2f", customPrice))
+    }
+    val isModified = kotlin.math.abs(customPrice - item.unit_price) > 0.001
+    val accent = if (isModified) Crimson else Amber
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(Raised)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(item.name, color = Pearl, style = MaterialTheme.typography.bodySmall,
-                maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Top,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(item.name, color = Pearl, style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (item.notes.isNotBlank())
+                    Text(item.notes, color = Mist, style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Text("×${item.quantity}", color = Mist, style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Bold)
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(
+                    onClick = { onPriceChange(maxOf(0.0, customPrice - 0.5)) },
+                    enabled = enabled,
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                    modifier = Modifier.height(28.dp),
+                ) {
+                    Text("−", color = if (enabled && customPrice > 0) Amber else Outline,
+                        fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                }
+                BasicTextField(
+                    value = priceText,
+                    onValueChange = { new ->
+                        priceText = new
+                        new.replace(',', '.').toDoubleOrNull()?.coerceAtLeast(0.0)?.let { onPriceChange(it) }
+                    },
+                    enabled = enabled,
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    textStyle = MaterialTheme.typography.labelMedium.copy(
+                        color = accent, fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace, textAlign = TextAlign.Center,
+                    ),
+                    decorationBox = { inner ->
+                        Box(
+                            modifier = Modifier
+                                .widthIn(min = 64.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Ocean)
+                                .border(1.dp, if (isModified) Crimson.copy(alpha = 0.5f) else Outline, RoundedCornerShape(6.dp))
+                                .padding(horizontal = 6.dp, vertical = 5.dp),
+                            contentAlignment = Alignment.Center,
+                        ) { inner() }
+                    },
+                )
+                TextButton(
+                    onClick = { onPriceChange(customPrice + 0.5) },
+                    enabled = enabled,
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                    modifier = Modifier.height(28.dp),
+                ) {
+                    Text("+", color = if (enabled) Amber else Outline,
+                        fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                }
+                if (isModified && enabled) {
+                    TextButton(
+                        onClick = onReset,
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                        modifier = Modifier.height(28.dp),
+                    ) {
+                        Text("↺", color = Teal, style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+            }
             Text(
-                text = "@ ${String.format(Locale.FRANCE, "%.2f DT", item.unit_price)} / unité",
-                color = Mist,
+                text = fmtDt(customPrice * item.quantity),
+                color = accent,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+
+        if (isModified) {
+            Text(
+                text = "Prix initial : ${fmtDt(item.unit_price)} / unité",
+                color = Outline,
                 style = MaterialTheme.typography.labelSmall,
             )
-            if (item.notes.isNotBlank())
-                Text(item.notes, color = Mist, style = MaterialTheme.typography.labelSmall,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Spacer(Modifier.width(8.dp))
-        Text("×${item.quantity}", color = Mist, style = MaterialTheme.typography.bodySmall)
-        Spacer(Modifier.width(8.dp))
-        Text(
-            text = String.format(Locale.FRANCE, "%.2f DT", item.unit_price * item.quantity),
-            color = Amber,
-            style = MaterialTheme.typography.bodySmall,
-            fontWeight = FontWeight.SemiBold,
-            fontFamily = FontFamily.Monospace,
-        )
     }
 }
 

@@ -107,6 +107,8 @@ class PaymentViewModel(
         customAdultPrice: Double = 0.0,
         customChildPrice: Double = 0.0,
         adjustedOrderTotal: Double = 0.0,
+        /** Items with per-line prices possibly edited at payment time (overrides order.items prices). */
+        adjustedItems: List<TableOrderItem>? = null,
     ) {
         viewModelScope.launch {
             try {
@@ -114,9 +116,10 @@ class PaymentViewModel(
                 val now      = Timestamp.now()
                 val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
                 val batch    = db.batch()
+                val itemsToSell = adjustedItems ?: order?.items ?: emptyList()
 
-                // 1 — sales records per item (original prices for product tracking)
-                order?.items?.forEach { item ->
+                // 1 — sales records per item, using the ACTUAL price charged at payment
+                itemsToSell.forEach { item ->
                     if (item.quantity > 0) {
                         val ref = db.collection("sales").document()
                         batch.set(ref, mapOf(
@@ -130,15 +133,15 @@ class PaymentViewModel(
                             "date"          to todayStr,
                             "source"        to "table_payment",
                             "tableLabel"    to tableLabel,
-                            "tableOrderId"  to (order.id),
+                            "tableOrderId"  to (order?.id ?: ""),
                             "createdAt"     to now,
                         ))
                     }
                 }
 
-                // 1b — adjustment record when order total was manually changed
-                val computedOrderTotal = order?.items?.sumOf { it.unit_price * it.quantity } ?: 0.0
-                val orderAdjustment = adjustedOrderTotal - computedOrderTotal
+                // 1b — residual adjustment record (covers any gap between UI total and sold items, e.g. rounding)
+                val soldTotal = itemsToSell.sumOf { it.unit_price * it.quantity }
+                val orderAdjustment = adjustedOrderTotal - soldTotal
                 if (order != null && Math.abs(orderAdjustment) > 0.009) {
                     val ref = db.collection("sales").document()
                     batch.set(ref, mapOf(
@@ -157,22 +160,29 @@ class PaymentViewModel(
                     ))
                 }
 
-                // 2 — mark table_order paid
+                // 2 — mark table_order paid (persist the adjusted item prices on the order itself)
                 order?.id?.takeIf { it.isNotBlank() }?.let { orderId ->
-                    batch.update(
-                        db.collection("table_orders").document(orderId),
-                        mapOf(
-                            "status"             to "paid",
-                            "paidAt"             to now,
-                            "grandTotal"         to finalTotal,
-                            "discountPercent"    to discountPercent,
-                            "discountAmount"     to discountAmount,
-                            "remarque"           to remarque.trim(),
-                            "customAdultPrice"   to customAdultPrice,
-                            "customChildPrice"   to customChildPrice,
-                            "adjustedOrderTotal" to adjustedOrderTotal,
-                        )
+                    val updateMap = mutableMapOf<String, Any>(
+                        "status"             to "paid",
+                        "paidAt"             to now,
+                        "grandTotal"         to finalTotal,
+                        "discountPercent"    to discountPercent,
+                        "discountAmount"     to discountAmount,
+                        "remarque"           to remarque.trim(),
+                        "customAdultPrice"   to customAdultPrice,
+                        "customChildPrice"   to customChildPrice,
+                        "adjustedOrderTotal" to adjustedOrderTotal,
                     )
+                    if (adjustedItems != null) {
+                        updateMap["items"] = adjustedItems.map {
+                            mapOf(
+                                "item_id" to it.item_id, "name" to it.name,
+                                "quantity" to it.quantity, "unit_price" to it.unit_price,
+                                "notes" to it.notes,
+                            )
+                        }
+                    }
+                    batch.update(db.collection("table_orders").document(orderId), updateMap)
                 }
 
                 // 3 — mark reservation paid

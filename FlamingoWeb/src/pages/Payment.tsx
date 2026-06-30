@@ -745,7 +745,7 @@ function InvoiceDialog({
   positionPrices: { price: number; childPrice: number } | null;
   onClose: () => void;
 }) {
-  // Compute initial order total before hooks (used to initialise customOrderTotal)
+  // Compute initial order total before hooks (used to initialise per-item custom prices)
   const orderItems: OrderItem[] = order?.items || [];
   const computedOrderTotal = orderItems.reduce(
     (sum, item) => sum + norm(item.unit_price) * norm(item.quantity),
@@ -762,7 +762,10 @@ function InvoiceDialog({
   const [discountPercent, setDiscountPercent] = useState(0);
   const [customAdultPrice, setCustomAdultPrice] = useState(positionPrices?.price ?? 0);
   const [customChildPrice, setCustomChildPrice] = useState(positionPrices?.childPrice ?? 0);
-  const [customOrderTotal, setCustomOrderTotal] = useState(computedOrderTotal);
+  // Prix éditable PAR ARTICLE — un prix unitaire par ligne de commande
+  const [customItemPrices, setCustomItemPrices] = useState<number[]>(
+    () => orderItems.map((i) => norm(i.unit_price)),
+  );
 
   const isWalkIn = !reservation && order?.source === 'walkin';
 
@@ -776,7 +779,10 @@ function InvoiceDialog({
   const adultUnitPrice   = customAdultPrice;
   const childUnitPrice   = customChildPrice;
   const reservationTotal = adultUnitPrice * adults + childUnitPrice * children;
-  const orderTotal       = customOrderTotal;
+  const orderTotal = orderItems.reduce(
+    (sum, item, i) => sum + (customItemPrices[i] ?? norm(item.unit_price)) * norm(item.quantity),
+    0,
+  );
 
   const subtotal       = reservationTotal + orderTotal;
   const discountAmount = Math.round(subtotal * discountPercent) / 100;
@@ -787,11 +793,15 @@ function InvoiceDialog({
 
   const handlePrint = () => {
     const now = new Date();
+    const adjustedItemsForPrint = orderItems.map((item, i) => ({
+      ...item,
+      unit_price: customItemPrices[i] ?? norm(item.unit_price),
+    }));
     const html = buildReceiptHtml({
       tableLabel, clientName, adults, children,
       serverName: order?.server_name || '',
       adultUnitPrice, childUnitPrice, reservationTotal,
-      orderItems, orderTotal, subtotal,
+      orderItems: adjustedItemsForPrint, orderTotal, subtotal,
       discountPercent, discountAmount, finalTotal,
       remarque,
       dateStr: format(now, 'dd/MM/yyyy'),
@@ -811,8 +821,12 @@ function InvoiceDialog({
       const now = Timestamp.now();
       const batch = writeBatch(db);
 
-      // Sales records per item — original prices for product tracking
-      for (const item of orderItems) {
+      // Sales records per item — using the ACTUAL price charged at payment time
+      const adjustedItems = orderItems.map((item, i) => ({
+        ...item,
+        unit_price: customItemPrices[i] ?? norm(item.unit_price),
+      }));
+      for (const item of adjustedItems) {
         if (norm(item.quantity) > 0) {
           batch.set(doc(collection(db, 'sales')), {
             productName:   item.name,
@@ -831,8 +845,9 @@ function InvoiceDialog({
         }
       }
 
-      // Adjustment record: manual order total change vs. original item prices
-      const orderAdjustment = customOrderTotal - computedOrderTotal;
+      // Residual adjustment record — covers any gap between UI total and sold items (rounding)
+      const soldTotal = adjustedItems.reduce((s, i) => s + norm(i.unit_price) * norm(i.quantity), 0);
+      const orderAdjustment = orderTotal - soldTotal;
       if (Math.abs(orderAdjustment) > 0.009) {
         batch.set(doc(collection(db, 'sales')), {
           productName:   `Ajustement commande — ${tableLabel}`,
@@ -850,7 +865,7 @@ function InvoiceDialog({
         });
       }
 
-      // Mark order paid
+      // Mark order paid — persist the adjusted item prices on the order itself
       if (order?.id) {
         batch.update(doc(db, 'table_orders', order.id), {
           status:             'paid',
@@ -861,7 +876,8 @@ function InvoiceDialog({
           remarque:           remarque.trim(),
           customAdultPrice,
           customChildPrice,
-          adjustedOrderTotal: customOrderTotal,
+          adjustedOrderTotal: orderTotal,
+          items:              adjustedItems,
         });
       }
 
@@ -1011,62 +1027,89 @@ function InvoiceDialog({
             )}
           </div>
 
-          {/* Consommation */}
+          {/* Consommation — prix éditable PAR ARTICLE */}
           <div className="rounded-sm border border-black/5 bg-slate-50/60 p-4 space-y-2">
             <div className="text-[10px] uppercase tracking-[0.3em] font-bold text-slate-500 border-b border-black/5 pb-2 mb-3">
               Consommation — Extra / Boissons
             </div>
             {orderItems.length > 0 ? (
               <>
-                {orderItems.map((item, idx) => (
-                  <div key={idx} className="space-y-0.5">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-700 flex-1 min-w-0 truncate pr-2">
-                        {norm(item.quantity)}× {item.name}
-                      </span>
-                      <span className="font-mono font-medium shrink-0">
-                        {(norm(item.unit_price) * norm(item.quantity)).toLocaleString('fr-FR')} DT
-                      </span>
+                {orderItems.map((item, idx) => {
+                  const currentPrice = customItemPrices[idx] ?? norm(item.unit_price);
+                  const isModified = Math.abs(currentPrice - norm(item.unit_price)) > 0.001;
+                  const setPrice = (v: number) => {
+                    setCustomItemPrices((prev) => {
+                      const next = [...prev];
+                      while (next.length <= idx) next.push(norm(item.unit_price));
+                      next[idx] = Math.max(0, v);
+                      return next;
+                    });
+                  };
+                  return (
+                    <div key={idx} className="rounded-sm bg-white border border-black/5 p-2.5 space-y-1.5">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-slate-700 flex-1 min-w-0 truncate pr-2 font-medium">
+                          {item.name}
+                        </span>
+                        <span className="text-slate-400 shrink-0">×{norm(item.quantity)}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setPrice(currentPrice - 0.5)}
+                            disabled={paid}
+                            className="w-6 h-6 flex items-center justify-center text-amber-600 border border-black/10 rounded-sm hover:bg-amber-50 disabled:opacity-40"
+                          >−</button>
+                          <input
+                            type="number" min={0} step="0.5"
+                            value={currentPrice}
+                            onChange={(e) => setPrice(Number(e.target.value) || 0)}
+                            disabled={paid}
+                            className={cn(
+                              'w-16 border-b bg-transparent text-center font-mono text-sm outline-none disabled:opacity-50',
+                              isModified ? 'border-red-400 text-red-600 font-bold' : 'border-flamingo/40 focus:border-flamingo',
+                            )}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setPrice(currentPrice + 0.5)}
+                            disabled={paid}
+                            className="w-6 h-6 flex items-center justify-center text-amber-600 border border-black/10 rounded-sm hover:bg-amber-50 disabled:opacity-40"
+                          >+</button>
+                          {isModified && !paid && (
+                            <button
+                              type="button"
+                              onClick={() => setPrice(norm(item.unit_price))}
+                              title="Réinitialiser au prix initial"
+                              className="text-xs text-blue-500 hover:text-blue-700"
+                            >↺</button>
+                          )}
+                        </div>
+                        <span className={cn('font-mono font-semibold shrink-0', isModified ? 'text-red-600' : 'text-slate-700')}>
+                          {dt(currentPrice * norm(item.quantity))}
+                        </span>
+                      </div>
+                      {isModified && (
+                        <div className="text-[10px] text-slate-400">
+                          Prix initial : {dt(norm(item.unit_price))} / unité
+                        </div>
+                      )}
                     </div>
-                    <div className="text-[10px] text-slate-400 pl-3">
-                      {norm(item.unit_price).toLocaleString('fr-FR')} DT / unité
-                    </div>
-                  </div>
-                ))}
-                {computedOrderTotal !== customOrderTotal && (
-                  <div className="flex justify-between text-xs text-slate-300 line-through select-none">
-                    <span>Calculé</span>
-                    <span className="font-mono">{dt(computedOrderTotal)}</span>
-                  </div>
-                )}
+                  );
+                })}
+                <div className="flex items-center justify-between pt-2 border-t border-black/5">
+                  <span className="text-sm text-slate-500 font-medium">Total consommation</span>
+                  <span className={cn('font-mono font-bold', orderTotal !== computedOrderTotal ? 'text-red-600' : 'text-slate-900')}>
+                    {dt(orderTotal)}
+                  </span>
+                </div>
               </>
             ) : (
               <p className="text-sm text-center text-slate-400 py-1">
-                Aucun article — entrez un montant si nécessaire
+                Aucun article dans cette commande
               </p>
             )}
-            {/* Editable total */}
-            <div className="flex items-center justify-between pt-2 border-t border-black/5">
-              <span className="text-sm text-slate-500 font-medium">Total consommation</span>
-              <div className="flex items-center gap-1.5">
-                <input
-                  type="number" min={0} step="0.5"
-                  value={customOrderTotal}
-                  onChange={(e) => setCustomOrderTotal(Math.max(0, Number(e.target.value) || 0))}
-                  disabled={paid}
-                  className="w-24 border-b border-flamingo/40 bg-transparent text-right font-mono text-sm font-bold outline-none focus:border-flamingo disabled:opacity-50"
-                />
-                <span className="text-xs text-slate-400">DT</span>
-                {computedOrderTotal !== customOrderTotal && !paid && (
-                  <button
-                    type="button"
-                    onClick={() => setCustomOrderTotal(computedOrderTotal)}
-                    title="Réinitialiser au total calculé"
-                    className="text-xs text-blue-500 hover:text-blue-700 ml-1"
-                  >↺</button>
-                )}
-              </div>
-            </div>
           </div>
 
           {/* Remise */}
