@@ -121,27 +121,29 @@ class ReservationRepository {
 
     // ── RESERVATION MUTATIONS ─────────────────────────────────────────
 
-    suspend fun addReservation(reservation: Reservation): Result<String> = try {
-        // Conflict check: block double-booking for same position on same day
-        if (reservation.positionType.isNotBlank() && !reservation.positionNumber.isNullOrBlank()) {
-            val conflict = db.collection("reservations")
-                .whereEqualTo("date", reservation.date)
-                .whereEqualTo("positionType", reservation.positionType)
-                .whereEqualTo("positionNumber", reservation.positionNumber!!)
-                .get().await()
-                .documents
-                .any { doc -> doc.getString("status") !in listOf("cancelled", "absent") }
-            if (conflict) {
-                return Result.failure(
-                    Exception("${reservation.positionType} N°${reservation.positionNumber} est déjà réservé(e) pour le ${reservation.date}")
-                )
+    suspend fun addReservation(reservation: Reservation): Result<String> {
+        return try {
+            // Conflict check: block double-booking for same position on same day
+            if (reservation.positionType.isNotBlank() && !reservation.positionNumber.isNullOrBlank()) {
+                val conflict = db.collection("reservations")
+                    .whereEqualTo("date", reservation.date)
+                    .whereEqualTo("positionType", reservation.positionType)
+                    .whereEqualTo("positionNumber", reservation.positionNumber!!)
+                    .get().await()
+                    .documents
+                    .any { doc -> doc.getString("status") !in listOf("cancelled", "absent") }
+                if (conflict) {
+                    return Result.failure(
+                        Exception("${reservation.positionType} N°${reservation.positionNumber} est déjà réservé(e) pour le ${reservation.date}")
+                    )
+                }
             }
-        }
-        val now = Timestamp.now()
-        val ref = db.collection("reservations")
-            .add(reservation.copy(createdAt = now, updatedAt = now)).await()
-        Result.success(ref.id)
-    } catch (e: Exception) { Result.failure(e) }
+            val now = Timestamp.now()
+            val ref = db.collection("reservations")
+                .add(reservation.copy(createdAt = now, updatedAt = now)).await()
+            Result.success(ref.id)
+        } catch (e: Exception) { Result.failure(e) }
+    }
 
     suspend fun updateReservation(id: String, reservation: Reservation): Result<Unit> = try {
         db.collection("reservations").document(id)

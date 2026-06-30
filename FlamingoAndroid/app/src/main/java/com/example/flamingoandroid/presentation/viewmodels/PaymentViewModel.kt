@@ -56,7 +56,7 @@ class PaymentViewModel(
     init {
         viewModelScope.launch {
             val user = FirebaseAuth.getInstance().currentUser
-            _userRole.value = authRepo.getCurrentUserRole(user)
+            _userRole.value = authRepo.getCurrentUserRole(user) ?: ""
         }
     }
 
